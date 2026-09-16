@@ -1,0 +1,67 @@
+name: rhm-platform
+
+services:
+  database-empleados:
+    image: postgres:17-alpine
+    container_name: database-empleados
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_EMPLOYEES_NAME:-employees_db}
+      POSTGRES_USER: ${DB_EMPLOYEES_USER:-employees_service}
+      POSTGRES_PASSWORD: ${DB_EMPLOYEES_PASSWORD:-employees_local_password}
+    ports:
+      - "127.0.0.1:${DB_EMPLOYEES_HOST_PORT:-5433}:5432"
+    volumes:
+      - employees-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  empleados-service:
+    container_name: empleados-service
+    build:
+      context: ../ms-employees
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${EMPLOYEES_LOG_LEVEL:-info}
+      LOG_PRETTY: "false"
+      PORT: 8080
+      DB_HOST: database-empleados
+      DB_PORT: 5432
+      DB_NAME: ${DB_EMPLOYEES_NAME:-employees_db}
+      DB_SCHEMA: employees
+      DB_USER: ${DB_EMPLOYEES_USER:-employees_service}
+      DB_PASSWORD: ${DB_EMPLOYEES_PASSWORD:-employees_local_password}
+      DB_SSL: "false"
+      DB_POOL_MAX: 10
+      DB_CONNECT_MAX_ATTEMPTS: 5
+      DB_CONNECT_RETRY_DELAY_MS: 1000
+    ports:
+      - "${EMPLOYEES_HOST_PORT:-8080}:8080"
+    depends_on:
+      database-empleados:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+
+volumes:
+  employees-db-data:
+    name: employees-db-data
+
+networks:
+  microservices-network:
+    name: microservices-network
+    driver: bridge

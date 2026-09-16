@@ -1,88 +1,63 @@
-# Infraestructura de base de datos RHM
+# Plataforma RHM — infraestructura del Reto 2
 
-Infraestructura local de PostgreSQL compartida por los microservicios del sistema RHM. Se utiliza
-una sola instancia y una sola base de datos, con un schema y credenciales independientes para cada
-microservicio.
+Orquestación incremental del sistema de Recursos Humanos. En esta primera etapa contiene el
+microservicio de empleados y su base de datos exclusiva. Departamentos se incorporará después.
 
-## Diseño actual
+## Componentes actuales
 
-```text
-PostgreSQL 17
-└── base rhm
-    └── schema employees
-        └── propietario employees_service
-```
+| Servicio | Tecnología | Puerto host | Dependencia |
+|---|---|---:|---|
+| `empleados-service` | Node.js / TypeScript | 8080 | `database-empleados` |
+| `database-empleados` | PostgreSQL 17 | 5433 (solo localhost) | `employees-db-data` |
 
-El usuario de `ms-employees` no es administrador de PostgreSQL y su `search_path` apunta al schema
-`employees`. Los nuevos microservicios deberán incorporar su propio usuario y schema siguiendo el
-mismo patrón.
+Dentro de Docker, empleados se conecta a `database-empleados:5432`. La publicación en
+`127.0.0.1:5433` existe únicamente para desarrollo local y DBeaver.
 
-## Inicio local
-
-Crear el archivo local de variables a partir del ejemplo:
+## Inicio desde cero
 
 ```bash
 cp .env.example .env
+docker compose up --build
 ```
 
-Cambiar las contraseñas de ejemplo y levantar PostgreSQL:
+Verificar el arranque ordenado:
 
 ```bash
-docker compose up -d
 docker compose ps
 ```
 
-Detenerlo sin eliminar los datos:
+`database-empleados` debe aparecer como `healthy`. Compose espera ese estado antes de arrancar
+`empleados-service` mediante `depends_on.condition: service_healthy`.
+
+```text
+API:          http://localhost:8080
+Swagger UI:   http://localhost:8080/docs/
+OpenAPI:      http://localhost:8080/openapi.json
+PostgreSQL:   localhost:5433
+```
+
+## Persistencia y esquema
 
 ```bash
 docker compose down
+docker compose up -d
 ```
 
-La información se conserva en el volumen `rhm-postgres-data`.
+Los datos sobreviven porque permanecen en `employees-db-data`. Para borrarlos deliberadamente:
 
-## Conexión de ms-employees
-
-Cuando el microservicio se ejecute directamente en la máquina:
-
-```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=rhm
-DB_SCHEMA=employees
-DB_USER=employees_service
-DB_PASSWORD=la_misma_clave_de_EMPLOYEES_DB_PASSWORD
+```bash
+docker compose down -v
 ```
 
-Cuando `ms-employees` se ejecute en otro contenedor conectado a `rhm-network`:
+Se eligieron migraciones versionadas. `ms-employees` crea el schema, aplica cambios y registra las
+versiones en `employees.schema_migrations` antes de aceptar tráfico. Esto permite evolucionar tablas
+sin la limitación de `init.sql`, que solo se ejecuta cuando el volumen está vacío.
 
-```env
-DB_HOST=postgres
-DB_PORT=5432
-DB_NAME=rhm
-DB_SCHEMA=employees
-DB_USER=employees_service
-DB_PASSWORD=la_misma_clave_de_EMPLOYEES_DB_PASSWORD
+## Comandos útiles
+
+```bash
+docker compose up --build
+docker compose down
+docker compose logs -f empleados-service
+docker compose logs -f database-empleados
 ```
-
-Dentro de contenedores se utiliza el nombre del servicio `postgres`, no `localhost`.
-
-## Inicialización
-
-Los archivos de `database/init` solo se ejecutan cuando PostgreSQL crea un volumen vacío. Modificar
-un archivo de inicialización no altera un volumen ya creado. Los cambios posteriores del esquema de
-tablas deben gestionarse mediante las migraciones propias de cada microservicio.
-
-No ejecutar `docker compose down -v` salvo que se quiera borrar definitivamente la base local y
-volver a ejecutar toda la inicialización.
-
-## Responsabilidades
-
-Este repositorio administra:
-
-- La instancia PostgreSQL compartida.
-- La base de datos `rhm`.
-- La red y el volumen de Docker.
-- Los usuarios y schemas de cada microservicio.
-
-Cada microservicio administra sus tablas, índices y migraciones, y nunca consulta directamente los
-schemas pertenecientes a otros servicios.
