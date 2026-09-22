@@ -5,3 +5,8 @@
 *.log
 .idea/
 .vscode/
+
+# Archivos locales de Postman
+coleccion_postman/.postman/
+coleccion_postman/microservicios/
+coleccion_postman/postman/
