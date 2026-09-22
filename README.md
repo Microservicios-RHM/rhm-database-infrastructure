@@ -60,6 +60,30 @@ docker compose up --build
 Empleados aplica migraciones versionadas al iniciar. Departamentos usa el script reproducible
 `ms-departments/database/init/01_schema.sql`, ejecutado por MySQL al crear un volumen vacío.
 
+## Decisiones de arquitectura
+
+### Motor de base de datos por servicio
+
+La plataforma usa PostgreSQL 17 para Empleados y MySQL 8.4 para Departamentos. Esta persistencia
+políglota aprovecha la independencia de los microservicios: cada servicio puede elegir y evolucionar
+su persistencia sin compartir tablas ni contratos internos. A cambio, el equipo debe operar,
+monitorear, respaldar y actualizar dos motores distintos.
+
+### Creación y evolución del esquema
+
+Cada servicio es dueño de su esquema. Empleados aplica migraciones versionadas e idempotentes al
+arrancar. Departamentos tiene un script de creación inicial que MySQL ejecuta solo con un volumen
+vacío. Cuando haya datos, cualquier cambio debe aplicarse mediante una migración incremental y
+versionada; nunca mediante `docker compose down -v`, porque ese comando elimina los datos.
+
+### Garantía de unicidad
+
+En Empleados, las consultas previas permiten devolver mensajes claros para `email` y
+`numeroEmpleado` duplicados. PostgreSQL mantiene restricciones `UNIQUE` como garantía definitiva:
+si dos solicitudes simultáneas superan la consulta previa, solo una inserción se confirma y la otra
+violación de restricción se traduce a `400`. Departamentos protege su identificador con clave
+primaria en MySQL.
+
 ## Comandos útiles
 
 ```bash
