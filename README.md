@@ -1,18 +1,20 @@
 # Plataforma RHM — infraestructura
 
-Este repositorio contiene el único `docker-compose.yml` del sistema. Levanta los dos
-microservicios y sus bases de datos aisladas con un solo comando.
+Este repositorio contiene el único `docker-compose.yml` del sistema. Levanta el API Gateway, los
+dos microservicios y sus bases de datos aisladas con un solo comando.
 
 | Componente | Tecnología | Puerto host | Volumen / dependencia |
 |---|---|---:|---|
-| `empleados-service` | Node.js + TypeScript | 8080 | `database-empleados` |
+| `api-gateway` | Node.js + TypeScript | 8080 | ambos microservicios |
+| `empleados-service` | Node.js + TypeScript | interno 8080 | `database-empleados` |
 | `database-empleados` | PostgreSQL 17 | 5433, solo localhost | `employees-db-data` |
-| `departamentos-service` | PHP 8.3 + Apache | 8081 | `database-departamentos` |
+| `departamentos-service` | PHP 8.3 + Apache | interno 80 | `database-departamentos` |
 | `database-departamentos` | MySQL 8.4 | 3307, solo localhost | `departments-db-data` |
 
-Dentro de Docker, empleados usa `database-empleados:5432` y departamentos usa
-`database-departamentos:3306`. La validación del departamento se realiza por HTTP contra
-`http://departamentos-service`; ningún servicio consulta la base de datos del otro.
+La única entrada HTTP publicada para los microservicios es `http://localhost:8080`, servida por el
+Gateway. Dentro de Docker, el Gateway enruta `/empleados/*` a `empleados-service:8080` y
+`/departamentos/*` a `departamentos-service:80`. Empleados usa `database-empleados:5432` y
+departamentos usa `database-departamentos:3306`; ningún servicio consulta la base de datos del otro.
 
 ## Inicio
 
@@ -33,13 +35,58 @@ Las dos bases deben mostrar el estado `healthy`. Los servicios dependen de ese e
 también espera a que departamentos esté saludable.
 
 ```text
-Empleados:               http://localhost:8080
-Swagger empleados:       http://localhost:8080/docs/
-OpenAPI empleados:       http://localhost:8080/openapi.json
+Gateway:                 http://localhost:8080
+Empleados por Gateway:   http://localhost:8080/empleados
+Departamentos por Gateway: http://localhost:8080/departamentos
+Health Gateway:           http://localhost:8080/health
 
-Departamentos:           http://localhost:8081
-Swagger departamentos:   http://localhost:8081/docs/
-OpenAPI departamentos:   http://localhost:8081/openapi.json
+Los servicios no publican puertos HTTP directamente al host. Sus puertos internos son
+`empleados-service:8080` y `departamentos-service:80`.
+
+## API Gateway y Circuit Breaker
+
+El cliente externo utiliza únicamente `http://localhost:8080`, publicado por `api-gateway`:
+
+| Ruta pública | Destino interno |
+|---|---|
+| `/health` | API Gateway |
+| `/empleados/*` | `empleados-service:8080` |
+| `/departamentos/*` | `departamentos-service:80` |
+
+`empleados-service` valida departamentos mediante HTTP y no accede directamente a MySQL. La
+operación está protegida por un Circuit Breaker con `opossum`, configurado en el servicio
+consumidor:
+
+```dotenv
+DEPARTMENTS_CIRCUIT_BREAKER_THRESHOLD=3
+DEPARTMENTS_CIRCUIT_BREAKER_RESET_TIMEOUT_MS=30000
+```
+
+Los tres fallos definitivos consecutivos abren el circuito. Los retries internos conservan tres
+intentos, timeout por intento de 2 segundos, backoff y timeout total de 9 segundos; la operación
+completa cuenta como un único fallo del Circuit Breaker. Un `404` de departamentos conserva el
+flujo `DEPARTMENT_NOT_FOUND` con HTTP 400 y no abre el circuito.
+
+En `OPEN`, no se ejecutan nuevas llamadas a departamentos y el registro responde HTTP 503 con
+`DEPARTMENT_SERVICE_UNAVAILABLE`. No se agregó `PENDIENTE_VALIDACION` al modelo ni al esquema de
+PostgreSQL porque ese estado no pertenece al dominio actual. Después de 30 segundos, `HALF_OPEN`
+permite una llamada de prueba: un éxito devuelve el circuito a `CLOSED` y un fallo lo mantiene en
+`OPEN`. Las transiciones y los fallos se registran con Pino en `empleados-service`.
+
+Para reproducir la prueba controlada sin eliminar volúmenes:
+
+```bash
+docker compose stop departamentos-service
+# realizar tres POST /empleados mediante http://localhost:8080
+# cada operación debe mostrar los retries y responder 503
+# una solicitud posterior debe ser rechazada rápidamente por el circuito OPEN
+docker compose start departamentos-service
+docker compose ps
+```
+
+Después del reset timeout, una solicitud válida debe demostrar `HALF_OPEN` y recuperación a
+`CLOSED`. Las pruebas deterministas del Circuit Breaker se ejecutan desde `ms-employees` con
+`npm test`.
 ```
 
 ## Persistencia

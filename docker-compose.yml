@@ -49,8 +49,8 @@ services:
       DEPARTMENTS_MAX_ATTEMPTS: 3
       DEPARTMENTS_RETRY_BASE_DELAY_MS: 1000
       DEPARTMENTS_TOTAL_TIMEOUT_MS: 9000
-    ports:
-      - "${EMPLOYEES_HOST_PORT:-8080}:8080"
+    expose:
+      - "8080"
     depends_on:
       database-empleados:
         condition: service_healthy
@@ -103,8 +103,8 @@ services:
       DB_USER: ${DB_DEPARTMENTS_USER:-departments_service}
       DB_PASSWORD: ${DB_DEPARTMENTS_PASSWORD:-departments_local_password}
       DB_CHARSET: utf8mb4
-    ports:
-      - "${DEPARTMENTS_HOST_PORT:-8081}:80"
+    expose:
+      - "80"
     depends_on:
       database-departamentos:
         condition: service_healthy
@@ -114,6 +114,33 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+    networks:
+      - microservices-network
+
+  api-gateway:
+    container_name: api-gateway
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      EMPLEADOS_SERVICE_URL: http://empleados-service:8080
+      DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:80
+    ports:
+      - "8080:8080"
+    depends_on:
+      empleados-service:
+        condition: service_healthy
+      departamentos-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     networks:
       - microservices-network
 
