@@ -1,63 +1,70 @@
 # Plataforma RHM — infraestructura del Reto 2
 
-Orquestación incremental del sistema de Recursos Humanos. En esta primera etapa contiene el
-microservicio de empleados y su base de datos exclusiva. Departamentos se incorporará después.
+Este repositorio contiene el único `docker-compose.yml` del sistema. Levanta los dos
+microservicios y sus bases de datos aisladas con un solo comando.
 
-## Componentes actuales
-
-| Servicio | Tecnología | Puerto host | Dependencia |
+| Componente | Tecnología | Puerto host | Volumen / dependencia |
 |---|---|---:|---|
-| `empleados-service` | Node.js / TypeScript | 8080 | `database-empleados` |
-| `database-empleados` | PostgreSQL 17 | 5433 (solo localhost) | `employees-db-data` |
+| `empleados-service` | Node.js + TypeScript | 8080 | `database-empleados` |
+| `database-empleados` | PostgreSQL 17 | 5433, solo localhost | `employees-db-data` |
+| `departamentos-service` | PHP 8.3 + Apache | 8081 | `database-departamentos` |
+| `database-departamentos` | MySQL 8.4 | 3307, solo localhost | `departments-db-data` |
 
-Dentro de Docker, empleados se conecta a `database-empleados:5432`. La publicación en
-`127.0.0.1:5433` existe únicamente para desarrollo local y DBeaver.
+Dentro de Docker, empleados usa `database-empleados:5432` y departamentos usa
+`database-departamentos:3306`. La validación del departamento se realiza por HTTP contra
+`http://departamentos-service`; ningún servicio consulta la base de datos del otro.
 
-## Inicio desde cero
+## Inicio
+
+Desde esta carpeta:
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Verificar el arranque ordenado:
+Verifica el arranque ordenado:
 
 ```bash
 docker compose ps
 ```
 
-`database-empleados` debe aparecer como `healthy`. Compose espera ese estado antes de arrancar
-`empleados-service` mediante `depends_on.condition: service_healthy`.
+Las dos bases deben mostrar el estado `healthy`. Los servicios dependen de ese estado; empleados
+también espera a que departamentos esté saludable.
 
 ```text
-API:          http://localhost:8080
-Swagger UI:   http://localhost:8080/docs/
-OpenAPI:      http://localhost:8080/openapi.json
-PostgreSQL:   localhost:5433
+Empleados:               http://localhost:8080
+Swagger empleados:       http://localhost:8080/docs/
+OpenAPI empleados:       http://localhost:8080/openapi.json
+
+Departamentos:           http://localhost:8081
+Swagger departamentos:   http://localhost:8081/docs/
+OpenAPI departamentos:   http://localhost:8081/openapi.json
 ```
 
-## Persistencia y esquema
+## Persistencia
 
 ```bash
 docker compose down
 docker compose up -d
 ```
 
-Los datos sobreviven porque permanecen en `employees-db-data`. Para borrarlos deliberadamente:
+Los datos sobreviven porque viven en los volúmenes. Para eliminarlos deliberadamente y recrear
+ambas bases desde cero:
 
 ```bash
 docker compose down -v
+docker compose up --build
 ```
 
-Se eligieron migraciones versionadas. `ms-employees` crea el schema, aplica cambios y registra las
-versiones en `employees.schema_migrations` antes de aceptar tráfico. Esto permite evolucionar tablas
-sin la limitación de `init.sql`, que solo se ejecuta cuando el volumen está vacío.
+Empleados aplica migraciones versionadas al iniciar. Departamentos usa el script reproducible
+`ms-departments/database/init/01_schema.sql`, ejecutado por MySQL al crear un volumen vacío.
 
 ## Comandos útiles
 
 ```bash
-docker compose up --build
-docker compose down
 docker compose logs -f empleados-service
+docker compose logs -f departamentos-service
 docker compose logs -f database-empleados
+docker compose logs -f database-departamentos
 ```

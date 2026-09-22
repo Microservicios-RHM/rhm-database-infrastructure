@@ -24,6 +24,7 @@ services:
 
   empleados-service:
     container_name: empleados-service
+    image: servidor-empleados
     build:
       context: ../ms-employees
       dockerfile: Dockerfile
@@ -43,10 +44,16 @@ services:
       DB_POOL_MAX: 10
       DB_CONNECT_MAX_ATTEMPTS: 5
       DB_CONNECT_RETRY_DELAY_MS: 1000
+      DEPARTMENTS_SERVICE_URL: http://departamentos-service
+      DEPARTMENTS_TIMEOUT_MS: 2000
+      DEPARTMENTS_MAX_ATTEMPTS: 3
+      DEPARTMENTS_RETRY_BASE_DELAY_MS: 1000
     ports:
       - "${EMPLOYEES_HOST_PORT:-8080}:8080"
     depends_on:
       database-empleados:
+        condition: service_healthy
+      departamentos-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
@@ -57,9 +64,63 @@ services:
     networks:
       - microservices-network
 
+  database-departamentos:
+    image: mysql:8.4
+    container_name: database-departamentos
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_DEPARTMENTS_ROOT_PASSWORD:-departments_root_password}
+      MYSQL_DATABASE: ${DB_DEPARTMENTS_NAME:-departments_db}
+      MYSQL_USER: ${DB_DEPARTMENTS_USER:-departments_service}
+      MYSQL_PASSWORD: ${DB_DEPARTMENTS_PASSWORD:-departments_local_password}
+    ports:
+      - "127.0.0.1:${DB_DEPARTMENTS_HOST_PORT:-3307}:3306"
+    volumes:
+      - departments-db-data:/var/lib/mysql
+      - ../ms-departments/database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    networks:
+      - microservices-network
+
+  departamentos-service:
+    container_name: departamentos-service
+    build:
+      context: ../ms-departments
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      DB_HOST: database-departamentos
+      DB_PORT: 3306
+      DB_NAME: ${DB_DEPARTMENTS_NAME:-departments_db}
+      DB_USER: ${DB_DEPARTMENTS_USER:-departments_service}
+      DB_PASSWORD: ${DB_DEPARTMENTS_PASSWORD:-departments_local_password}
+      DB_CHARSET: utf8mb4
+    ports:
+      - "${DEPARTMENTS_HOST_PORT:-8081}:80"
+    depends_on:
+      database-departamentos:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://localhost/health') ? 0 : 1);"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - microservices-network
+
 volumes:
   employees-db-data:
     name: employees-db-data
+  departments-db-data:
+    name: departments-db-data
 
 networks:
   microservices-network:
