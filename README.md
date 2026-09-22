@@ -1,4 +1,4 @@
-# Plataforma RHM — infraestructura del Reto 2
+# Plataforma RHM — infraestructura
 
 Este repositorio contiene el único `docker-compose.yml` del sistema. Levanta los dos
 microservicios y sus bases de datos aisladas con un solo comando.
