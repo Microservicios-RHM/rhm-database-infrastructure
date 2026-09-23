@@ -120,7 +120,7 @@ services:
   api-gateway:
     container_name: api-gateway
     build:
-      context: ./api-gateway
+      context: ../api-gateway
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
