@@ -1,172 +1,87 @@
 {
   "info": {
     "_postman_id": "c0f90f52-5ddf-4555-98e7-d5e37e0c9005",
-    "name": "microservicios",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "36639157",
-    "_collection_link": "https://go.postman.co/collection/36639157-c0f90f52-5ddf-4555-98e7-d5e37e0c9005?source=collection_link"
+    "name": "RHM - Microservicios",
+    "description": "Colección para el API Gateway. Todas las solicitudes externas usan {{baseUrl}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "departmentId", "value": "" },
+    { "key": "employeeId", "value": "" },
+    { "key": "employeeEmail", "value": "" },
+    { "key": "employeeNumber", "value": "" }
+  ],
   "item": [
     {
-      "name": "ms-employees",
+      "name": "01 - API Gateway",
       "item": [
         {
-          "name": "health",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "http://localhost:8080/health",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8080",
-              "path": [
-                "health"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Registrar Empleados",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "accept",
-                "value": "application/json"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"id\": \"E001\",\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"juan.perez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-001\",\n  \"cargo\": \"Desarrollador Senior\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\",\n  \"estado\": \"ACTIVO\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "http://localhost:8080/empleados",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8080",
-              "path": [
-                "empleados"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Buscar Empleado ID",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "accept",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "http://localhost:8080/empleados/E0012",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8080",
-              "path": [
-                "empleados",
-                "E0012"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Buscar Empleados",
-          "request": {
-            "method": "GET",
-            "header": []
-          },
-          "response": []
-        },
-        {
-          "name": "Registrar Empleado Con Departamento",
-          "request": {
-            "method": "GET",
-            "header": []
-          },
+          "name": "Health del Gateway",
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/health" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));", "pm.expect(pm.response.json().data.status).to.eql('UP');"] } }],
           "response": []
         }
       ]
     },
     {
-      "name": "ms-departaments",
+      "name": "02 - Departamentos",
       "item": [
         {
-          "name": "Crear Departamento",
+          "name": "Crear departamento",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["pm.collectionVariables.set('departmentId', `DPT-${Date.now()}`);"] } },
+            { "listen": "test", "script": { "exec": ["pm.test('Responde 201', () => pm.response.to.have.status(201));", "pm.expect(pm.response.headers.get('Location')).to.eql(`/departamentos/${pm.collectionVariables.get('departmentId')}`);"] } }
+          ],
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n    \"id\": \"RRHH\",\r\n    \"nombre\": \"Recursos Humanos\",\r\n    \"descripcion\": \"Gestion del talento humano\"\r\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "http://localhost:8081/departamentos",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8081",
-              "path": [
-                "departamentos"
-              ]
-            }
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{departmentId}}\",\n  \"nombre\": \"Departamento Postman\",\n  \"descripcion\": \"Departamento creado para validar el Gateway\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/departamentos"
           },
           "response": []
         },
         {
-          "name": "Consultar Departamento",
+          "name": "Consultar departamento creado",
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/departamentos/{{departmentId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));", "pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('departmentId'));"] } }],
+          "response": []
+        },
+        {
+          "name": "Listar departamentos",
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/departamentos" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));"] } }],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 - Empleados",
+      "item": [
+        {
+          "name": "Registrar empleado con departamento validado",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["const suffix = Date.now();", "pm.collectionVariables.set('employeeId', `EMP-${suffix}`);", "pm.collectionVariables.set('employeeEmail', `empleado.${suffix}@empresa.test`);", "pm.collectionVariables.set('employeeNumber', `POSTMAN-${suffix}`);"] } },
+            { "listen": "test", "script": { "exec": ["pm.test('Responde 201', () => pm.response.to.have.status(201));", "pm.expect(pm.response.headers.get('Location')).to.eql(`/empleados/${pm.collectionVariables.get('employeeId')}`);"] } }
+          ],
           "request": {
-            "method": "GET",
-            "header": []
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{employeeId}}\",\n  \"nombre\": \"Empleado\",\n  \"apellido\": \"Postman\",\n  \"email\": \"{{employeeEmail}}\",\n  \"numeroEmpleado\": \"{{employeeNumber}}\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"{{departmentId}}\",\n  \"fechaIngreso\": \"2026-09-28\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/empleados"
           },
           "response": []
         },
         {
-          "name": "Listar Departamentos",
-          "request": {
-            "method": "GET",
-            "header": []
-          },
+          "name": "Consultar empleado creado",
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/empleados/{{employeeId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));"] } }],
           "response": []
         },
         {
-          "name": "health",
-          "request": {
-            "method": "GET",
-            "header": []
-          },
+          "name": "Listar empleados",
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/empleados" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));"] } }],
           "response": []
         }
       ]

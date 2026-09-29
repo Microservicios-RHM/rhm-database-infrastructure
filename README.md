@@ -62,10 +62,11 @@ DEPARTMENTS_CIRCUIT_BREAKER_THRESHOLD=3
 DEPARTMENTS_CIRCUIT_BREAKER_RESET_TIMEOUT_MS=30000
 ```
 
-Los tres fallos definitivos consecutivos abren el circuito. Los retries internos conservan tres
-intentos, timeout por intento de 2 segundos, backoff y timeout total de 9 segundos; la operación
-completa cuenta como un único fallo del Circuit Breaker. Un `404` de departamentos conserva el
-flujo `DEPARTMENT_NOT_FOUND` con HTTP 400 y no abre el circuito.
+Después de un mínimo de tres operaciones, una tasa de fallo de al menos 50 % en una ventana de
+30 segundos abre el circuito. Los retries internos conservan tres intentos, timeout por intento de
+2 segundos, backoff y timeout total de 9 segundos; la operación completa cuenta como un único
+fallo del Circuit Breaker. Un `404` de departamentos conserva el flujo `DEPARTMENT_NOT_FOUND` con
+HTTP 400 y no abre el circuito.
 
 En `OPEN`, no se ejecutan nuevas llamadas a departamentos y el registro responde HTTP 503 con
 `DEPARTMENT_SERVICE_UNAVAILABLE`. No se agregó `PENDIENTE_VALIDACION` al modelo ni al esquema de
