@@ -1,6 +1,27 @@
 name: rhm-platform
 
 services:
+  message-broker:
+    image: rabbitmq:4-management-alpine
+    container_name: message-broker
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${BROKER_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${BROKER_PASSWORD:-admin}
+    ports:
+      - "127.0.0.1:${BROKER_AMQP_HOST_PORT:-5672}:5672"
+      - "127.0.0.1:${BROKER_UI_HOST_PORT:-15672}:15672"
+    volumes:
+      - broker-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - microservices-network
+
   database-empleados:
     image: postgres:17-alpine
     container_name: database-empleados
@@ -49,12 +70,16 @@ services:
       DEPARTMENTS_TOTAL_TIMEOUT_MS: 9000
       DEPARTMENTS_CIRCUIT_BREAKER_THRESHOLD: 3
       DEPARTMENTS_CIRCUIT_BREAKER_RESET_TIMEOUT_MS: 30000
+      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      BROKER_EXCHANGE: rhm.events
     expose:
       - "8080"
     depends_on:
       database-empleados:
         condition: service_healthy
       departamentos-service:
+        condition: service_healthy
+      message-broker:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
@@ -115,6 +140,162 @@ services:
     networks:
       - microservices-network
 
+  database-notificaciones:
+    image: postgres:17-alpine
+    container_name: database-notificaciones
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NOTIFICATIONS_NAME:-notifications_db}
+      POSTGRES_USER: ${DB_NOTIFICATIONS_USER:-notifications_service}
+      POSTGRES_PASSWORD: ${DB_NOTIFICATIONS_PASSWORD:-notifications_local_password}
+    volumes:
+      - notifications-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  notificaciones-service:
+    container_name: notificaciones-service
+    build:
+      context: ../ms-notifications
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${NOTIFICATIONS_LOG_LEVEL:-info}
+      PORT: 8080
+      DB_HOST: database-notificaciones
+      DB_PORT: 5432
+      DB_NAME: ${DB_NOTIFICATIONS_NAME:-notifications_db}
+      DB_USER: ${DB_NOTIFICATIONS_USER:-notifications_service}
+      DB_PASSWORD: ${DB_NOTIFICATIONS_PASSWORD:-notifications_local_password}
+      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      BROKER_EXCHANGE: rhm.events
+      BROKER_QUEUE: notificaciones.queue
+    expose:
+      - "8080"
+    depends_on:
+      database-notificaciones:
+        condition: service_healthy
+      message-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  database-perfiles:
+    image: postgres:17-alpine
+    container_name: database-perfiles
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_PROFILES_NAME:-profiles_db}
+      POSTGRES_USER: ${DB_PROFILES_USER:-profiles_service}
+      POSTGRES_PASSWORD: ${DB_PROFILES_PASSWORD:-profiles_local_password}
+    volumes:
+      - profiles-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  perfiles-service:
+    container_name: perfiles-service
+    build:
+      context: ../ms-profiles
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${PROFILES_LOG_LEVEL:-info}
+      PORT: 8080
+      DB_HOST: database-perfiles
+      DB_PORT: 5432
+      DB_NAME: ${DB_PROFILES_NAME:-profiles_db}
+      DB_USER: ${DB_PROFILES_USER:-profiles_service}
+      DB_PASSWORD: ${DB_PROFILES_PASSWORD:-profiles_local_password}
+      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      BROKER_EXCHANGE: rhm.events
+      BROKER_QUEUE: perfiles.queue
+    expose:
+      - "8080"
+    depends_on:
+      database-perfiles:
+        condition: service_healthy
+      message-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  database-vacaciones:
+    image: postgres:17-alpine
+    container_name: database-vacaciones
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_VACATIONS_NAME:-vacations_db}
+      POSTGRES_USER: ${DB_VACATIONS_USER:-vacations_service}
+      POSTGRES_PASSWORD: ${DB_VACATIONS_PASSWORD:-vacations_local_password}
+    volumes:
+      - vacations-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  vacaciones-service:
+    container_name: vacaciones-service
+    build:
+      context: ../ms-vacation
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${VACATIONS_LOG_LEVEL:-info}
+      PORT: 8080
+      DB_HOST: database-vacaciones
+      DB_PORT: 5432
+      DB_NAME: ${DB_VACATIONS_NAME:-vacations_db}
+      DB_USER: ${DB_VACATIONS_USER:-vacations_service}
+      DB_PASSWORD: ${DB_VACATIONS_PASSWORD:-vacations_local_password}
+      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      BROKER_EXCHANGE: rhm.events
+      BROKER_QUEUE: vacaciones.queue
+    expose:
+      - "8080"
+    depends_on:
+      database-vacaciones:
+        condition: service_healthy
+      message-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+
   api-gateway:
     container_name: api-gateway
     build:
@@ -126,12 +307,21 @@ services:
       PORT: 8080
       EMPLEADOS_SERVICE_URL: http://empleados-service:8080
       DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:80
+      NOTIFICACIONES_SERVICE_URL: http://notificaciones-service:8080
+      PERFILES_SERVICE_URL: http://perfiles-service:8080
+      VACACIONES_SERVICE_URL: http://vacaciones-service:8080
     ports:
       - "8080:8080"
     depends_on:
       empleados-service:
         condition: service_healthy
       departamentos-service:
+        condition: service_healthy
+      notificaciones-service:
+        condition: service_healthy
+      perfiles-service:
+        condition: service_healthy
+      vacaciones-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
@@ -147,6 +337,14 @@ volumes:
     name: employees-db-data
   departments-db-data:
     name: departments-db-data
+  broker-data:
+    name: broker-data
+  notifications-db-data:
+    name: notifications-db-data
+  profiles-db-data:
+    name: profiles-db-data
+  vacations-db-data:
+    name: vacations-db-data
 
 networks:
   microservices-network:
