@@ -60,10 +60,16 @@ consumidor:
 ```dotenv
 DEPARTMENTS_CIRCUIT_BREAKER_THRESHOLD=3
 DEPARTMENTS_CIRCUIT_BREAKER_RESET_TIMEOUT_MS=30000
+DEPARTMENTS_CACHE_TTL_SECONDS=300
 ```
 
+La caché `node-cache` se mantiene dentro de `empleados-service`: almacena únicamente validaciones
+positivas de Departamentos. Ante timeout, error o Circuit Breaker `OPEN`, permite registrar solo si
+existe una entrada vigente; sin ella responde `503`. Al ser local por instancia, Redis sería la
+evolución necesaria para varias réplicas.
+
 Después de un mínimo de tres operaciones, una tasa de fallo de al menos 50 % en una ventana de
-30 segundos abre el circuito. Los retries internos conservan tres intentos, timeout por intento de
+60 segundos abre el circuito. Los retries internos conservan tres intentos, timeout por intento de
 2 segundos, backoff y timeout total de 9 segundos; la operación completa cuenta como un único
 fallo del Circuit Breaker. Un `404` de departamentos conserva el flujo `DEPARTMENT_NOT_FOUND` con
 HTTP 400 y no abre el circuito.
