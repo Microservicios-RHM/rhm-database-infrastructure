@@ -72,6 +72,8 @@ services:
       DEPARTMENTS_CIRCUIT_BREAKER_RESET_TIMEOUT_MS: 30000
       BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
       BROKER_EXCHANGE: rhm.events
+      DEPARTMENTS_CACHE_TTL_SECONDS: 300
+      CACHE_ADMIN_TOKEN: ${CACHE_ADMIN_TOKEN:-change_this_cache_admin_token}
     expose:
       - "8080"
     depends_on:
