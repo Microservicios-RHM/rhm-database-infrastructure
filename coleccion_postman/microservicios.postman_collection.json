@@ -1177,12 +1177,64 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "07 - Administracion",
+      "item": [
+        {
+          "name": "Limpiar cache de departamentos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().message).to.eql('Cache limpiado correctamente');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Cache-Admin-Token",
+                "value": "{{cacheAdminToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados/cache/departamentos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados",
+                "cache",
+                "departamentos"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "baseUrl",
       "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "cacheAdminToken",
+      "value": "change_this_cache_admin_token",
       "type": "string"
     },
     {
