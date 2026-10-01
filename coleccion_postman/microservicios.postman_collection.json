@@ -1,25 +1,47 @@
 {
   "info": {
-    "_postman_id": "c0f90f52-5ddf-4555-98e7-d5e37e0c9005",
+    "_postman_id": "a1970e40-4f17-423b-8aae-f895a2131fa5",
     "name": "RHM - Microservicios",
-    "description": "Colección para el API Gateway. Todas las solicitudes externas usan {{baseUrl}}.",
+    "description": "Coleccion para el API Gateway de la plataforma RHM. Todas las solicitudes externas usan {{baseUrl}} (http://localhost:8080 con el stack levantado via `docker compose up --build` desde rhm-database-infrastructure). Incluye el flujo completo del Reto 4: empleados (con baja logica y auditoria), departamentos, notificaciones, perfiles y vacaciones, mas el acceso a Swagger UI de cada servicio detras del Gateway. Ejecuta las carpetas en orden (02 antes de 03, y dentro de cada una de arriba hacia abajo) para que las variables de coleccion (departmentId/employeeId/employeeEmail/employeeNumber/vacationId) se propaguen correctamente entre solicitudes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "departmentId", "value": "" },
-    { "key": "employeeId", "value": "" },
-    { "key": "employeeEmail", "value": "" },
-    { "key": "employeeNumber", "value": "" }
-  ],
   "item": [
     {
       "name": "01 - API Gateway",
       "item": [
         {
           "name": "Health del Gateway",
-          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/health" },
-          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));", "pm.expect(pm.response.json().data.status).to.eql('UP');"] } }],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().data.status).to.eql('UP');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
           "response": []
         }
       ]
@@ -30,27 +52,164 @@
         {
           "name": "Crear departamento",
           "event": [
-            { "listen": "prerequest", "script": { "exec": ["pm.collectionVariables.set('departmentId', `DPT-${Date.now()}`);"] } },
-            { "listen": "test", "script": { "exec": ["pm.test('Responde 201', () => pm.response.to.have.status(201));", "pm.expect(pm.response.headers.get('Location')).to.eql(`/departamentos/${pm.collectionVariables.get('departmentId')}`);"] } }
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('departmentId', `DPT-${Date.now()}`);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "pm.expect(pm.response.headers.get('Location')).to.eql(`/departamentos/${pm.collectionVariables.get('departmentId')}`);"
+                ],
+                "type": "text/javascript"
+              }
+            }
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{departmentId}}\",\n  \"nombre\": \"Departamento Postman\",\n  \"descripcion\": \"Departamento creado para validar el Gateway\"\n}", "options": { "raw": { "language": "json" } } },
-            "url": "{{baseUrl}}/departamentos"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/departamentos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "departamentos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{departmentId}}\",\n  \"nombre\": \"Departamento Postman\",\n  \"descripcion\": \"Departamento creado para validar el Gateway\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "response": []
         },
         {
           "name": "Consultar departamento creado",
-          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/departamentos/{{departmentId}}" },
-          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));", "pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('departmentId'));"] } }],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.expect(pm.response.json().data.id).to.eql(pm.collectionVariables.get('departmentId'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/departamentos/{{departmentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "departamentos",
+                "{{departmentId}}"
+              ]
+            }
+          },
           "response": []
         },
         {
           "name": "Listar departamentos",
-          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/departamentos" },
-          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));"] } }],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/departamentos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "departamentos"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Swagger UI de departamentos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/departamentos/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "departamentos",
+                "docs"
+              ]
+            }
+          },
           "response": []
         }
       ]
@@ -61,30 +220,1010 @@
         {
           "name": "Registrar empleado con departamento validado",
           "event": [
-            { "listen": "prerequest", "script": { "exec": ["const suffix = Date.now();", "pm.collectionVariables.set('employeeId', `EMP-${suffix}`);", "pm.collectionVariables.set('employeeEmail', `empleado.${suffix}@empresa.test`);", "pm.collectionVariables.set('employeeNumber', `POSTMAN-${suffix}`);"] } },
-            { "listen": "test", "script": { "exec": ["pm.test('Responde 201', () => pm.response.to.have.status(201));", "pm.expect(pm.response.headers.get('Location')).to.eql(`/empleados/${pm.collectionVariables.get('employeeId')}`);"] } }
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const suffix = Date.now();",
+                  "pm.collectionVariables.set('employeeId', `EMP-${suffix}`);",
+                  "pm.collectionVariables.set('employeeEmail', `empleado.${suffix}@empresa.test`);",
+                  "pm.collectionVariables.set('employeeNumber', `POSTMAN-${suffix}`);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "pm.expect(pm.response.headers.get('Location')).to.eql(`/empleados/${pm.collectionVariables.get('employeeId')}`);"
+                ],
+                "type": "text/javascript"
+              }
+            }
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Accept", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"id\": \"{{employeeId}}\",\n  \"nombre\": \"Empleado\",\n  \"apellido\": \"Postman\",\n  \"email\": \"{{employeeEmail}}\",\n  \"numeroEmpleado\": \"{{employeeNumber}}\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"{{departmentId}}\",\n  \"fechaIngreso\": \"2026-09-28\"\n}", "options": { "raw": { "language": "json" } } },
-            "url": "{{baseUrl}}/empleados"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{employeeId}}\",\n  \"nombre\": \"Empleado\",\n  \"apellido\": \"Postman\",\n  \"email\": \"{{employeeEmail}}\",\n  \"numeroEmpleado\": \"{{employeeNumber}}\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"{{departmentId}}\",\n  \"fechaIngreso\": \"2026-09-28\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "response": []
         },
         {
           "name": "Consultar empleado creado",
-          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/empleados/{{employeeId}}" },
-          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));"] } }],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados",
+                "{{employeeId}}"
+              ]
+            }
+          },
           "response": []
         },
         {
           "name": "Listar empleados",
-          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{baseUrl}}/empleados" },
-          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Responde 200', () => pm.response.to.have.status(200));"] } }],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Actualiza el cargo', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.cargo).to.eql('Analista Senior');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados",
+                "{{employeeId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Empleado\",\n  \"apellido\": \"Postman\",\n  \"email\": \"{{employeeEmail}}\",\n  \"cargo\": \"Analista Senior\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"{{departmentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar empleado para retirar",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const suffix = Date.now() + '-retire';",
+                  "pm.collectionVariables.set('retireEmployeeId', `EMP-${suffix}`);",
+                  "pm.collectionVariables.set('retireEmployeeEmail', `empleado.${suffix}@empresa.test`);",
+                  "pm.collectionVariables.set('retireEmployeeNumber', `POSTMAN-${suffix}`);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{retireEmployeeId}}\",\n  \"nombre\": \"Empleado\",\n  \"apellido\": \"A Retirar\",\n  \"email\": \"{{retireEmployeeEmail}}\",\n  \"numeroEmpleado\": \"{{retireEmployeeNumber}}\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"{{departmentId}}\",\n  \"fechaIngreso\": \"2026-09-28\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Retirar empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Transiciona a RETIRADO con fechaRetiro', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.estado).to.eql('RETIRADO');",
+                  "  pm.expect(body.data.fechaRetiro).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados/{{retireEmployeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados",
+                "{{retireEmployeeId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Auditoria de empleados retirados",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Solo devuelve empleados RETIRADO', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.every((item) => item.estado === 'RETIRADO')).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados?estado=RETIRADO&desde=2026-01-01&hasta=2026-12-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "RETIRADO"
+                },
+                {
+                  "key": "desde",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "hasta",
+                  "value": "2026-12-31"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Swagger UI de empleados",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados",
+                "docs"
+              ]
+            }
+          },
           "response": []
         }
       ]
+    },
+    {
+      "name": "04 - Notificaciones",
+      "item": [
+        {
+          "name": "Listar notificaciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Cada notificación usa camelCase', () => {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data.length > 0) {",
+                  "    pm.expect(body.data[0]).to.have.property('fechaEnvio');",
+                  "    pm.expect(body.data[0]).to.have.property('empleadoId');",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notificaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar notificaciones de un empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Todas las notificaciones son del empleado consultado', () => {",
+                  "  const body = pm.response.json();",
+                  "  const empleadoId = pm.collectionVariables.get('employeeId');",
+                  "  pm.expect(body.data.every((item) => item.empleadoId === empleadoId)).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notificaciones/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones",
+                "{{employeeId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Swagger UI de notificaciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notificaciones/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones",
+                "docs"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "05 - Perfiles",
+      "item": [
+        {
+          "name": "Consultar perfil de un empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('El perfil se creó automáticamente vía empleado.creado', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.empleadoId).to.eql(pm.collectionVariables.get('employeeId'));",
+                  "  pm.expect(body.data.archivado).to.eql(false);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/perfiles/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "perfiles",
+                "{{employeeId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar perfil de un empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Actualiza solo los campos provistos', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.ciudad).to.eql('Armenia');",
+                  "  pm.expect(body.data.telefono).to.eql('3001234567');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/perfiles/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "perfiles",
+                "{{employeeId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"3001234567\",\n  \"ciudad\": \"Armenia\",\n  \"biografia\": \"Perfil actualizado desde Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar perfiles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/perfiles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "perfiles"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Swagger UI de perfiles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/perfiles/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "perfiles",
+                "docs"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "06 - Vacaciones",
+      "item": [
+        {
+          "name": "Programar vacaciones",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const start = new Date();",
+                  "start.setDate(start.getDate() + 30);",
+                  "const end = new Date();",
+                  "end.setDate(end.getDate() + 45);",
+                  "const toIsoDate = (d) => d.toISOString().slice(0, 10);",
+                  "",
+                  "const raw = JSON.parse(pm.request.body.raw);",
+                  "raw.fechaInicio = toIsoDate(start);",
+                  "raw.fechaFin = toIsoDate(end);",
+                  "pm.request.body.update(JSON.stringify(raw));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.expect(body.data.empleadoId).to.eql(pm.collectionVariables.get('employeeId'));",
+                  "pm.expect(body.data.estado).to.eql('PROGRAMADA');",
+                  "pm.collectionVariables.set('vacationId', body.data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"{{employeeId}}\",\n  \"fechaInicio\": \"{{$isoTimestamp}}\",\n  \"fechaFin\": \"{{$isoTimestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar periodo de vacaciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Es el período programado', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.id).to.eql(pm.collectionVariables.get('vacationId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones/{{vacationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones",
+                "{{vacationId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar vacaciones de un empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones?empleadoId={{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones"
+              ],
+              "query": [
+                {
+                  "key": "empleadoId",
+                  "value": "{{employeeId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Rechaza solapamiento con periodo existente",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Mismo rango que \"Programar vacaciones\": debe solaparse con el período ya creado.",
+                  "const start = new Date();",
+                  "start.setDate(start.getDate() + 30);",
+                  "const end = new Date();",
+                  "end.setDate(end.getDate() + 45);",
+                  "const toIsoDate = (d) => d.toISOString().slice(0, 10);",
+                  "",
+                  "const raw = JSON.parse(pm.request.body.raw);",
+                  "raw.fechaInicio = toIsoDate(start);",
+                  "raw.fechaFin = toIsoDate(end);",
+                  "pm.request.body.update(JSON.stringify(raw));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 400 VACATION_OVERLAP', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.error.code).to.eql('VACATION_OVERLAP');",
+                  "  pm.expect(body.error.conflictingPeriod.id).to.eql(pm.collectionVariables.get('vacationId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"{{employeeId}}\",\n  \"fechaInicio\": \"{{$isoTimestamp}}\",\n  \"fechaFin\": \"{{$isoTimestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancelar vacaciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Queda CANCELADA', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data.estado).to.eql('CANCELADA');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones/{{vacationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones",
+                "{{vacationId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Swagger UI de vacaciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones",
+                "docs"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "departmentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "employeeId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "employeeEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "employeeNumber",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "retireEmployeeId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "retireEmployeeEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "retireEmployeeNumber",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vacationId",
+      "value": "",
+      "type": "string"
     }
   ]
 }
