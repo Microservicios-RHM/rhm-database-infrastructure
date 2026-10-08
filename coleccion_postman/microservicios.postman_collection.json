@@ -1,11 +1,117 @@
 {
   "info": {
-    "_postman_id": "a1970e40-4f17-423b-8aae-f895a2131fa5",
+    "_postman_id": "9e514354-115f-4c61-bd54-d8b5abb84db9",
     "name": "RHM - Microservicios",
-    "description": "Coleccion para el API Gateway de la plataforma RHM. Todas las solicitudes externas usan {{baseUrl}} (http://localhost:8080 con el stack levantado via `docker compose up --build` desde rhm-database-infrastructure). Incluye el flujo completo del Reto 4: empleados (con baja logica y auditoria), departamentos, notificaciones, perfiles y vacaciones, mas el acceso a Swagger UI de cada servicio detras del Gateway. Ejecuta las carpetas en orden (02 antes de 03, y dentro de cada una de arriba hacia abajo) para que las variables de coleccion (departmentId/employeeId/employeeEmail/employeeNumber/vacationId) se propaguen correctamente entre solicitudes.",
+    "description": "Coleccion para el API Gateway de la plataforma RHM. Todas las solicitudes externas usan {{baseUrl}} (http://localhost:8080 con el stack levantado via `docker compose up -d --build` desde rhm-database-infrastructure).\n\nDESDE EL RETO 5 TODO EXIGE TOKEN. La coleccion esta configurada con autenticacion Bearer a nivel de coleccion usando {{adminToken}}, asi que basta con ejecutar primero \"00 - Autenticacion > Login del administrador semilla\": ese login guarda el token y todas las demas solicitudes lo heredan. Las rutas publicas (login, recover-password, reset-password) y las que deben usar el token del empleado tienen su propia configuracion.\n\nEjecutar las carpetas EN ORDEN, de arriba hacia abajo, para que las variables de coleccion se propaguen: 00 obtiene el token, 02 crea el departamento, 03 crea el empleado, 08 recorre el onboarding y las reglas de autorizacion, 09 el ciclo de vacaciones y 10 el caso borde.\n\nLas carpetas 09 y 10 usan los endpoints de desarrollo forzar-inicio y forzar-fin para no tener que esperar a que el scheduler detecte el cambio de dia.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
   "item": [
+    {
+      "name": "00 - Autenticacion",
+      "description": "Ejecutar esta carpeta primero. El login guarda el token del administrador y las demas carpetas lo heredan sin configurar nada.",
+      "item": [
+        {
+          "name": "Login del administrador semilla",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const token = pm.response.json().data.accessToken;",
+                  "pm.collectionVariables.set('adminToken', token);",
+                  "pm.test('Devuelve un token', () => pm.expect(token).to.be.a('string').and.not.empty);",
+                  "const claims = JSON.parse(atob(token.split('.')[1]));",
+                  "pm.test('El token trae rol ADMIN', () => pm.expect(claims.role).to.eql('ADMIN'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Primera peticion de la coleccion. Guarda el token en la variable adminToken, que el resto de carpetas usa automaticamente. Esta cuenta la crea auth-service al arrancar: sin ella nadie podria crear el primer empleado, porque toda escritura exige rol ADMIN."
+          }
+        },
+        {
+          "name": "Peticion sin token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Codigo UNAUTHORIZED', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHORIZED'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados"
+              ]
+            },
+            "description": "Comprueba que el Gateway corta la peticion antes de llegar al microservicio."
+          }
+        }
+      ]
+    },
     {
       "name": "01 - API Gateway",
       "item": [
@@ -1224,6 +1330,1165 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "08 - Ciclo de vida de la cuenta (Reto 5)",
+      "description": "Ejecutar despues de 03 - Empleados, que es donde se crea el empleado y nace su cuenta. Recorre el onboarding completo y las reglas de autorizacion.",
+      "item": [
+        {
+          "name": "Obtener el token de activacion del empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const seguridad = pm.response.json().data",
+                  "  .filter((n) => n.tipo === 'SEGURIDAD')",
+                  "  .sort((a, b) => a.fechaEnvio.localeCompare(b.fechaEnvio));",
+                  "pm.test('Llego la notificacion de seguridad', () => pm.expect(seguridad).to.not.be.empty);",
+                  "const enlace = seguridad[seguridad.length - 1].mensaje.match(/token=([A-Za-z0-9_.-]+)/);",
+                  "pm.test('El mensaje trae el token', () => pm.expect(enlace).to.not.be.null);",
+                  "pm.collectionVariables.set('resetToken', enlace[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notificaciones/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones",
+                "{{employeeId}}"
+              ]
+            },
+            "description": "El token de activacion viaja dentro del mensaje de la notificacion SEGURIDAD, asi que se extrae de la propia API y no hace falta buscarlo en los logs. En produccion ese enlace llegaria por correo."
+          }
+        },
+        {
+          "name": "Establecer la contrasena",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"nuevaPassword\": \"{{userPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ]
+            },
+            "description": "Ruta abierta: se entra con el token de activacion, no con uno de acceso."
+          }
+        },
+        {
+          "name": "Login del empleado (USER)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const token = pm.response.json().data.accessToken;",
+                  "pm.collectionVariables.set('userToken', token);",
+                  "const claims = JSON.parse(atob(token.split('.')[1]));",
+                  "pm.test('El token trae rol USER', () => pm.expect(claims.role).to.eql('USER'));",
+                  "pm.test('El sub es el empleadoId', () => pm.expect(claims.sub).to.eql(pm.collectionVariables.get('employeeId')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{employeeEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "El login es con el correo; el claim sub del token es el empleadoId, que es lo que el Gateway compara para resolver la propiedad del recurso."
+          }
+        },
+        {
+          "name": "USER puede leer (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados"
+              ]
+            }
+          }
+        },
+        {
+          "name": "USER no puede borrar (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Codigo FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados",
+                "{{employeeId}}"
+              ]
+            },
+            "description": "El rol USER solo lee. Observar que es 403 y no 401: el token es valido, lo que falta es el permiso."
+          }
+        },
+        {
+          "name": "USER edita SU perfil (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"3001234567\",\n  \"direccion\": \"Calle 10\",\n  \"ciudad\": \"Armenia\",\n  \"biografia\": \"Actualizado desde Postman\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/perfiles/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "perfiles",
+                "{{employeeId}}"
+              ]
+            },
+            "description": "Misma ruta y mismo verbo que la siguiente peticion. Lo unico que cambia es de quien es el recurso."
+          }
+        },
+        {
+          "name": "USER no edita el perfil de otro (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Codigo FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"3009999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/perfiles/OTRO-EMPLEADO",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "perfiles",
+                "OTRO-EMPLEADO"
+              ]
+            },
+            "description": "Aqui se ve la diferencia entre RBAC y ABAC: la autorizacion ya no depende solo del rol, sino de quien es dueno del dato."
+          }
+        },
+        {
+          "name": "USER cambia su propia contrasena",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('userPassword', pm.collectionVariables.get('userNewPassword'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{userToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passwordActual\": \"{{userPassword}}\",\n  \"nuevaPassword\": \"{{userNewPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            },
+            "description": "Una de las dos excepciones de escritura del rol USER."
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Vacaciones y scheduler (Reto 5)",
+      "description": "Demuestra el ciclo completo: login OK, vacaciones inician, login falla, vacaciones terminan, login vuelve a funcionar.",
+      "item": [
+        {
+          "name": "Programar vacaciones que inician hoy",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const hoy = new Date();",
+                  "const manana = new Date(hoy.getTime() + 86400000);",
+                  "const iso = (f) => f.toISOString().slice(0, 10);",
+                  "pm.collectionVariables.set('vacStart', iso(hoy));",
+                  "pm.collectionVariables.set('vacEnd', iso(manana));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('lifecycleVacationId', pm.response.json().data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"{{employeeId}}\",\n  \"fechaInicio\": \"{{vacStart}}\",\n  \"fechaFin\": \"{{vacEnd}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones"
+              ]
+            },
+            "description": "Las fechas se calculan en el script previo. La validacion exige que el fin sea posterior al inicio, por eso no puede ser de hoy a hoy."
+          }
+        },
+        {
+          "name": "Forzar el inicio del periodo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones/{{lifecycleVacationId}}/forzar-inicio",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones",
+                "{{lifecycleVacationId}}",
+                "forzar-inicio"
+              ]
+            },
+            "description": "Endpoint de desarrollo. Dispara la misma transicion y el mismo evento que disparara el scheduler al llegar la fecha, para no esperar al cambio de dia. Exige rol ADMIN."
+          }
+        },
+        {
+          "name": "El login ahora falla (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Cuenta suspendida', () => pm.expect(pm.response.json().error.code).to.eql('ACCOUNT_SUSPENDED'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{employeeEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "El evento vacaciones.iniciadas llego a auth-service y suspendio la cuenta. Si falla por tiempo, reintentar: los eventos son asincronicos."
+          }
+        },
+        {
+          "name": "Forzar el fin del periodo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones/{{lifecycleVacationId}}/forzar-fin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones",
+                "{{lifecycleVacationId}}",
+                "forzar-fin"
+              ]
+            }
+          }
+        },
+        {
+          "name": "El login vuelve a funcionar (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('userToken', pm.response.json().data.accessToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{employeeEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "vacaciones.finalizadas reactivo la cuenta, porque estaba suspendida temporalmente."
+          }
+        },
+        {
+          "name": "Listar vacaciones por estado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const periodos = pm.response.json().data;",
+                  "pm.test('Todos estan FINALIZADA', () => periodos.forEach((p) => pm.expect(p.estado).to.eql('FINALIZADA')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones?empleadoId={{employeeId}}&estado=FINALIZADA",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones"
+              ],
+              "query": [
+                {
+                  "key": "empleadoId",
+                  "value": "{{employeeId}}"
+                },
+                {
+                  "key": "estado",
+                  "value": "FINALIZADA"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 - Caso borde: retiro durante vacaciones (Reto 5)",
+      "description": "Un empleado retirado mientras esta de vacaciones no debe recuperar el acceso cuando el periodo termine. Esta carpeta es autocontenida: crea su propio empleado.",
+      "item": [
+        {
+          "name": "Crear un segundo empleado",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const suffix = Date.now();",
+                  "pm.collectionVariables.set('edgeEmployeeId', `EDGE-${suffix}`);",
+                  "pm.collectionVariables.set('edgeEmployeeEmail', `borde.${suffix}@empresa.test`);",
+                  "pm.collectionVariables.set('edgeEmployeeNumber', `EDGE-${suffix}`);",
+                  "const hoy = new Date();",
+                  "const iso = (f) => f.toISOString().slice(0, 10);",
+                  "pm.collectionVariables.set('edgeStart', iso(hoy));",
+                  "pm.collectionVariables.set('edgeEnd', iso(new Date(hoy.getTime() + 86400000)));",
+                  "pm.collectionVariables.set('edgeFutureStart', iso(new Date(hoy.getTime() + 5 * 86400000)));",
+                  "pm.collectionVariables.set('edgeFutureEnd', iso(new Date(hoy.getTime() + 9 * 86400000)));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{edgeEmployeeId}}\",\n  \"nombre\": \"Caso\",\n  \"apellido\": \"Borde\",\n  \"email\": \"{{edgeEmployeeEmail}}\",\n  \"numeroEmpleado\": \"{{edgeEmployeeNumber}}\",\n  \"cargo\": \"Soporte\",\n  \"area\": \"Tecnologia\",\n  \"departamentoId\": \"{{departmentId}}\",\n  \"fechaIngreso\": \"2026-03-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/empleados",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Vacaciones que inician hoy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('edgeVacationId', pm.response.json().data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"{{edgeEmployeeId}}\",\n  \"fechaInicio\": \"{{edgeStart}}\",\n  \"fechaFin\": \"{{edgeEnd}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Vacaciones futuras del mismo empleado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('edgeFutureVacationId', pm.response.json().data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"{{edgeEmployeeId}}\",\n  \"fechaInicio\": \"{{edgeFutureStart}}\",\n  \"fechaFin\": \"{{edgeFutureEnd}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obtener su token de activacion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const seguridad = pm.response.json().data",
+                  "  .filter((n) => n.tipo === 'SEGURIDAD')",
+                  "  .sort((a, b) => a.fechaEnvio.localeCompare(b.fechaEnvio));",
+                  "pm.test('Llego la notificacion de seguridad', () => pm.expect(seguridad).to.not.be.empty);",
+                  "const enlace = seguridad[seguridad.length - 1].mensaje.match(/token=([A-Za-z0-9_.-]+)/);",
+                  "pm.collectionVariables.set('edgeResetToken', enlace[1]);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/notificaciones/{{edgeEmployeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "notificaciones",
+                "{{edgeEmployeeId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Establecer su contrasena",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{edgeResetToken}}\",\n  \"nuevaPassword\": \"{{edgePassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Comprobar que SI puede entrar (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{edgeEmployeeEmail}}\",\n  \"password\": \"{{edgePassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Importante para que la prueba demuestre algo: la cuenta tiene que poder entrar ANTES del retiro, para que el 401 del final signifique la baja y no la falta de contrasena."
+          }
+        },
+        {
+          "name": "Iniciar el primer periodo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones/{{edgeVacationId}}/forzar-inicio",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones",
+                "{{edgeVacationId}}",
+                "forzar-inicio"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Retirar al empleado MIENTRAS esta de vacaciones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/empleados/{{edgeEmployeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "empleados",
+                "{{edgeEmployeeId}}"
+              ]
+            },
+            "description": "Aqui ocurren dos cosas a la vez: auth-service marca la cuenta con baja permanente y vacaciones-service cancela los periodos que aun no habian iniciado."
+          }
+        },
+        {
+          "name": "Las futuras quedaron canceladas; la de hoy sigue en curso",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));",
+                  "const porId = Object.fromEntries(pm.response.json().data.map((p) => [p.id, p.estado]));",
+                  "pm.test('El periodo futuro quedo CANCELADA', () =>",
+                  "  pm.expect(porId[pm.collectionVariables.get('edgeFutureVacationId')]).to.eql('CANCELADA'));",
+                  "pm.test('El periodo en curso sigue EN_CURSO', () =>",
+                  "  pm.expect(porId[pm.collectionVariables.get('edgeVacationId')]).to.eql('EN_CURSO'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones?empleadoId={{edgeEmployeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones"
+              ],
+              "query": [
+                {
+                  "key": "empleadoId",
+                  "value": "{{edgeEmployeeId}}"
+                }
+              ]
+            },
+            "description": "Un periodo que ya empezo se deja terminar: ocurrio de verdad, y su evento de fin es lo que permite comprobar que la cuenta no se reactiva."
+          }
+        },
+        {
+          "name": "Finalizar el periodo en curso",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vacaciones/{{edgeVacationId}}/forzar-fin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vacaciones",
+                "{{edgeVacationId}}",
+                "forzar-fin"
+              ]
+            }
+          }
+        },
+        {
+          "name": "La cuenta NO se reactiva (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Responde 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Sigue desactivada de forma permanente', () =>",
+                  "  pm.expect(pm.response.json().error.code).to.eql('ACCOUNT_DEACTIVATED'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{edgeEmployeeEmail}}\",\n  \"password\": \"{{edgePassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Llego vacaciones.finalizadas sobre una cuenta con baja permanente. auth-service solo reactiva lo que esta SUSPENDIDA_TEMPORAL, asi que descarta el evento."
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -1275,6 +2540,111 @@
     {
       "key": "vacationId",
       "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminUsername",
+      "value": "admin",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "change_admin_password",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userPassword",
+      "value": "Reto5Segura1",
+      "type": "string"
+    },
+    {
+      "key": "userNewPassword",
+      "value": "Reto5Nueva2",
+      "type": "string"
+    },
+    {
+      "key": "resetToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vacStart",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "vacEnd",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "lifecycleVacationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeEmployeeId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeEmployeeEmail",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeEmployeeNumber",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeStart",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeEnd",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeFutureStart",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeFutureEnd",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeVacationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeFutureVacationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgeResetToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "edgePassword",
+      "value": "Borde2026Seg",
       "type": "string"
     }
   ]

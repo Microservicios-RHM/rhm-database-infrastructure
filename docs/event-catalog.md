@@ -1,4 +1,4 @@
-# Catálogo de eventos — Reto 4
+# Catálogo de eventos — Retos 4 y 5
 
 > **Nota de procedencia.** El enunciado del Reto 4 referencia un "Catálogo de Eventos" externo
 > (secciones 3.1 a 3.3) como fuente no negociable de nombres y payloads. Ese documento no estaba
@@ -10,6 +10,12 @@
 > `ms-employees` y de los requisitos de cada servicio consumidor. Si en algún momento aparece el
 > catálogo real del curso, este archivo debe actualizarse para igualarlo exactamente, y todos los
 > productores/consumidores deben migrar en conjunto.
+>
+> **Reto 5.** Los seis eventos de las secciones 5 a 10 siguen el mismo criterio: los nombres
+> (`vacaciones.iniciadas`, `vacaciones.finalizadas`, `usuario.creado`, `usuario.recuperacion`,
+> `cuenta.activada`, `cuenta.desactivada`) y los campos que el enunciado nombra explícitamente
+> (`motivo`, `permanente`) se toman literalmente de él; el resto de `data` se diseñó para que cada
+> consumidor pueda actuar sin consultar a nadie más.
 
 ## Envelope común
 
@@ -137,6 +143,132 @@ Consumido por:
   un log de advertencia y no se genera notificación (no debería ocurrir en operación normal, porque
   `vacaciones-service` ya validó la existencia del empleado antes de publicar).
 
+## 5. `vacaciones.iniciadas`
+
+Publicado por el scheduler de `vacaciones-service` cuando un período `PROGRAMADA` alcanza su
+`fechaInicio` y transiciona a `EN_CURSO`. No lo dispara ninguna petición HTTP: lo dispara el paso
+del tiempo.
+
+```json
+{
+  "id": "V-2026-0042",
+  "empleadoId": "E001",
+  "fechaInicio": "2026-03-15",
+  "fechaFin": "2026-03-30",
+  "estado": "EN_CURSO"
+}
+```
+
+Consumido por:
+- `auth-service` → suspende la cuenta temporalmente (`SUSPENDIDA_TEMPORAL`) y publica
+  `cuenta.desactivada`.
+
+## 6. `vacaciones.finalizadas`
+
+Publicado por el scheduler de `vacaciones-service` cuando un período `EN_CURSO` supera su
+`fechaFin` y transiciona a `FINALIZADA`.
+
+```json
+{
+  "id": "V-2026-0042",
+  "empleadoId": "E001",
+  "fechaInicio": "2026-03-15",
+  "fechaFin": "2026-03-30",
+  "estado": "FINALIZADA"
+}
+```
+
+Consumido por:
+- `auth-service` → reactiva la cuenta **solo si** está en `SUSPENDIDA_TEMPORAL`. Si el empleado fue
+  retirado durante el período, la cuenta está en `DESACTIVADA_PERMANENTE` y el evento se descarta
+  sin reactivar. Por eso el estado de la cuenta es un enum y no un booleano.
+
+## 7. `usuario.creado`
+
+Publicado por `auth-service` tras consumir `empleado.creado` y crear la cuenta en estado inactivo.
+Lleva el token de activación porque sin él el correo de bienvenida no serviría de nada: es este
+evento, y no `empleado.creado`, el que dispara ese correo.
+
+```json
+{
+  "empleadoId": "E001",
+  "email": "juan.perez@empresa.com",
+  "rol": "USER",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expiraEn": "2026-03-01T11:00:00.000Z"
+}
+```
+
+Nunca viaja una contraseña, ni en claro ni hasheada.
+
+Consumido por:
+- `notificaciones-service` → registra la notificación `SEGURIDAD` con el enlace de activación.
+
+## 8. `usuario.recuperacion`
+
+Publicado por `auth-service` tras una petición a `POST /auth/recover-password`. Mismo payload que
+`usuario.creado` salvo el rol, que aquí no aporta nada.
+
+```json
+{
+  "empleadoId": "E001",
+  "email": "juan.perez@empresa.com",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expiraEn": "2026-03-01T11:00:00.000Z"
+}
+```
+
+Consumido por:
+- `notificaciones-service` → registra la notificación `SEGURIDAD` con el enlace de restablecimiento.
+
+## 9. `cuenta.activada`
+
+Publicado por `auth-service` cuando una cuenta queda utilizable: al establecer la contraseña
+inicial, o al reactivarse tras unas vacaciones.
+
+```json
+{
+  "empleadoId": "E001",
+  "email": "juan.perez@empresa.com",
+  "motivo": "FIN_VACACIONES",
+  "estado": "ACTIVA"
+}
+```
+
+| `motivo` | Cuándo |
+|---|---|
+| `ACTIVACION_INICIAL` | El empleado estableció su contraseña con el token de activación. |
+| `FIN_VACACIONES` | Consumo de `vacaciones.finalizadas` sobre una cuenta suspendida. |
+
+Consumido por:
+- `notificaciones-service` → registra la notificación `CUENTA`.
+
+## 10. `cuenta.desactivada`
+
+Publicado por `auth-service` cuando una cuenta deja de poder iniciar sesión. `permanente` distingue
+las dos situaciones y es lo que permite al consumidor redactar el mensaje correcto.
+
+```json
+{
+  "empleadoId": "E001",
+  "email": "juan.perez@empresa.com",
+  "motivo": "VACACIONES",
+  "permanente": false,
+  "estado": "SUSPENDIDA_TEMPORAL"
+}
+```
+
+| `motivo` | `permanente` | `estado` resultante | Disparador |
+|---|---|---|---|
+| `VACACIONES` | `false` | `SUSPENDIDA_TEMPORAL` | Consumo de `vacaciones.iniciadas` |
+| `RETIRO` | `true` | `DESACTIVADA_PERMANENTE` | Consumo de `empleado.retirado` |
+
+Consumido por:
+- `notificaciones-service` → registra la notificación `CUENTA`.
+
+A diferencia de `vacaciones.programadas`, estos cuatro eventos sí incluyen `email`: `auth-service`
+lo tiene de primera mano, porque es la credencial con la que el empleado inicia sesión.
+
 ## Exchange y colas (RabbitMQ)
 
 - Exchange tipo `topic`: `rhm.events`, durable.
@@ -147,9 +279,10 @@ Consumido por:
 
 | Cola | Bindings | Consumidor |
 |---|---|---|
-| `notificaciones.queue` | `empleado.creado`, `empleado.retirado`, `vacaciones.programadas` | `notificaciones-service` |
+| `notificaciones.queue` | `empleado.creado`, `empleado.retirado`, `vacaciones.programadas`, `usuario.creado`, `usuario.recuperacion`, `cuenta.activada`, `cuenta.desactivada` | `notificaciones-service` |
 | `perfiles.queue` | `empleado.creado`, `empleado.actualizado`, `empleado.retirado` | `perfiles-service` |
 | `vacaciones.queue` | `empleado.creado`, `empleado.retirado` | `vacaciones-service` (directorio local de empleados válidos) |
+| `auth.queue` | `empleado.creado`, `empleado.retirado`, `vacaciones.iniciadas`, `vacaciones.finalizadas` | `auth-service` |
 
 ## Deduplicación
 

@@ -297,6 +297,8 @@ services:
       BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: vacaciones.queue
+      SCHEDULER_ENABLED: ${VACATIONS_SCHEDULER_ENABLED:-true}
+      SCHEDULER_INTERVAL_SECONDS: ${VACATIONS_SCHEDULER_INTERVAL_SECONDS:-60}
     expose:
       - "8080"
     depends_on:
@@ -306,6 +308,73 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  database-auth:
+    image: postgres:17-alpine
+    container_name: database-auth
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_AUTH_NAME:-auth_db}
+      POSTGRES_USER: ${DB_AUTH_USER:-auth_service}
+      POSTGRES_PASSWORD: ${DB_AUTH_PASSWORD:-auth_local_password}
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  auth-service:
+    container_name: auth-service
+    build:
+      context: ../auth-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${AUTH_LOG_LEVEL:-info}
+      LOG_PRETTY: "false"
+      PORT: 8080
+      DB_HOST: database-auth
+      DB_PORT: 5432
+      DB_NAME: ${DB_AUTH_NAME:-auth_db}
+      DB_SCHEMA: auth
+      DB_USER: ${DB_AUTH_USER:-auth_service}
+      DB_PASSWORD: ${DB_AUTH_PASSWORD:-auth_local_password}
+      DB_SSL: "false"
+      DB_POOL_MAX: 10
+      DB_CONNECT_MAX_ATTEMPTS: 5
+      DB_CONNECT_RETRY_DELAY_MS: 1000
+      JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret}
+      JWT_ISSUER: ${JWT_ISSUER:-auth-service}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-3600}
+      JWT_RESET_TTL_SECONDS: ${JWT_RESET_TTL_SECONDS:-900}
+      ADMIN_EMPLOYEE_ID: ${ADMIN_EMPLOYEE_ID:-ADMIN}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@empresa.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_admin_password}
+      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      BROKER_EXCHANGE: rhm.events
+      BROKER_QUEUE: auth.queue
+    expose:
+      - "8080"
+    depends_on:
+      database-auth:
+        condition: service_healthy
+      message-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -327,9 +396,14 @@ services:
       NOTIFICACIONES_SERVICE_URL: http://notificaciones-service:8080
       PERFILES_SERVICE_URL: http://perfiles-service:8080
       VACACIONES_SERVICE_URL: http://vacaciones-service:8080
+      AUTH_SERVICE_URL: http://auth-service:8080
+      JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret}
+      JWT_ISSUER: ${JWT_ISSUER:-auth-service}
     ports:
       - "8080:8080"
     depends_on:
+      auth-service:
+        condition: service_healthy
       empleados-service:
         condition: service_healthy
       departamentos-service:
@@ -362,6 +436,8 @@ volumes:
     name: profiles-db-data
   vacations-db-data:
     name: vacations-db-data
+  auth-db-data:
+    name: auth-db-data
 
 networks:
   microservices-network:
