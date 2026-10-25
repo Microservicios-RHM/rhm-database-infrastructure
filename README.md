@@ -17,12 +17,15 @@ microservicios y sus bases de datos aisladas con un solo comando.
 | `database-perfiles` | PostgreSQL 17 | interno 5432 (sin publicar) | `profiles-db-data` |
 | `vacaciones-service` | Ruby + Sinatra | interno 8080 (sin publicar) | `database-vacaciones` |
 | `database-vacaciones` | PostgreSQL 17 | interno 5432 (sin publicar) | `vacations-db-data` |
+| `auth-service` | Node.js + TypeScript | interno 8080 (sin publicar) | `database-auth` |
+| `database-auth` | PostgreSQL 17 | interno 5432 (sin publicar) | `auth-db-data` |
+| `mailhog` | MailHog | 8025 (UI), solo localhost | — |
 
 La única entrada HTTP publicada para los microservicios es `http://localhost:8080`, servida por el
 Gateway. Dentro de Docker, el Gateway enruta `/empleados/*` a `empleados-service:8080`,
 `/departamentos/*` a `departamentos-service:80`, `/notificaciones/*` a
-`notificaciones-service:8080`, `/perfiles/*` a `perfiles-service:8080` y `/vacaciones/*` a
-`vacaciones-service:8080`. Cada servicio usa su propia base de datos
+`notificaciones-service:8080`, `/perfiles/*` a `perfiles-service:8080`, `/vacaciones/*` a
+`vacaciones-service:8080` y `/auth/*` a `auth-service:8080`. Cada servicio usa su propia base de datos
 (`database-empleados:5432`, `database-departamentos:3306`, `database-notificaciones:5432`,
 `database-perfiles:5432`, `database-vacaciones:5432`); ningún servicio consulta la base de datos de
 otro.
@@ -44,6 +47,7 @@ El enunciado exige al menos 4 lenguajes distintos en el proyecto final. Este ret
 | `notificaciones-service` | Python + FastAPI | [ms-notifications](https://github.com/Microservicios-RHM/ms-notifications) |
 | `perfiles-service` | Go (biblioteca estándar `net/http`) | [ms-profiles](https://github.com/Microservicios-RHM/ms-profiles) |
 | `vacaciones-service` | Ruby + Sinatra | [ms-vacation](https://github.com/Microservicios-RHM/ms-vacation) |
+| `auth-service` | Node.js + TypeScript (Express) | [auth-service](https://github.com/Microservicios-RHM/auth-service) |
 
 Cinco lenguajes distintos (Node/TypeScript, PHP, Python, Go, Ruby) — uno más que el mínimo exigido.
 Los tres servicios nuevos del Reto 4 (`notificaciones`, `perfiles`, `vacaciones`) están en tres
@@ -291,6 +295,39 @@ Los tres consumidores nuevos (`notificaciones`, `perfiles`, `vacaciones`) implem
 patrón atómico (`INSERT ... ON CONFLICT DO NOTHING RETURNING id` sobre `eventos_procesados`,
 seguido del efecto, en una sola transacción), documentado con más detalle en el README de cada
 servicio.
+
+## Seguridad y control de acceso (Reto 5)
+
+Todos los endpoints exigen ahora un token JWT en la cabecera `Authorization: Bearer <token>`. La
+validación se hace **en el API Gateway**, una sola vez, y no con un interceptor por servicio: el
+ecosistema tiene seis servicios en cinco lenguajes, y repartir la verificación de firma
+significaría mantener sincronizadas cinco implementaciones de lo mismo.
+
+El proveedor de identidad es [`auth-service`](https://github.com/Microservicios-RHM/auth-service),
+que además gobierna el ciclo de vida de las cuentas a partir de los eventos del broker: crea la
+cuenta cuando se da de alta un empleado, la suspende cuando empiezan sus vacaciones, la reactiva
+cuando terminan y la da de baja cuando lo retiran.
+
+Para obtener un token de prueba:
+
+```bash
+curl -s -X POST http://localhost:8080/auth/login   -H "Content-Type: application/json"   -d '{"username":"admin","password":"change_admin_password"}'
+```
+
+Esa cuenta administradora se crea sola al arrancar. Sin ella nadie podría crear el primer empleado,
+porque todos los endpoints de escritura exigen rol `ADMIN`.
+
+| Rol | Puede |
+|---|---|
+| `ADMIN` | Todo |
+| `USER` | Leer cualquier recurso, cambiar su propia contraseña y editar **su propio** perfil |
+
+Sin token válido se responde `401`; con token pero sin permiso, `403`.
+
+**El detalle completo está en [docs/reto-5-seguridad.md](docs/reto-5-seguridad.md)**: la
+justificación de la estrategia elegida, el manejo del secreto JWT, el diagrama de secuencia del
+ciclo de vida de la cuenta, el scheduler de vacaciones con su limitación conocida, y la evidencia
+del caso borde del empleado retirado durante sus vacaciones.
 
 ## Persistencia
 
