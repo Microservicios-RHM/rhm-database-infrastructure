@@ -450,6 +450,11 @@ services:
       # Mismas credenciales del ADMIN semilla de auth-service: la etapa E2E las usa en su stack.
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_admin_password}
+      # Los Jenkinsfile lo pasan a los agentes Docker (--group-add) que también usan el socket.
+      DOCKER_GID: ${DOCKER_GID:?Defina DOCKER_GID en .env (stat -c %g /var/run/docker.sock)}
+    # Jenkins corre como `jenkins` (no root); este grupo le da acceso al socket Docker del host.
+    group_add:
+      - "${DOCKER_GID:?Defina DOCKER_GID en .env (stat -c %g /var/run/docker.sock)}"
     ports:
       - "${JENKINS_HOST_PORT:-9090}:8080"   # interfaz web
       - "127.0.0.1:50000:50000"             # agentes remotos (JNLP); no se usan por ahora

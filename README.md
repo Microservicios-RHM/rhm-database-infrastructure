@@ -490,13 +490,13 @@ que rompe un servicio se detecta también en los pipelines de los demás.
   no trae `docker compose`, necesario para la etapa E2E.
 - **Socket montado, no DinD**: más simple y reutiliza la caché de imágenes del host. Riesgo asumido
   (quien controla Jenkins controla el Docker del host), aceptable en un entorno académico.
-- **Permisos del socket**: el GID del grupo dueño de `/var/run/docker.sock` cambia entre máquinas
-  (968 en una, 999 en otra), así que no se puede fijar al construir la imagen como en el ejemplo del
-  enunciado (`groupadd docker` crea un GID que no coincide). `jenkins/entrypoint.sh` arranca como
-  root, lee el GID del socket, agrega al usuario `jenkins` a ese grupo y lanza Jenkins como `jenkins`
-  con `setpriv`. Exporta `DOCKER_GID`, que los Jenkinsfile pasan con `--group-add` a los agentes que
-  también usan el socket. Consecuencia: `docker exec jenkins ...` entra como root; usar
-  `docker exec -u jenkins jenkins ...` para actuar como Jenkins.
+- **Permisos del socket, sin root**: el GID del grupo dueño de `/var/run/docker.sock` cambia entre
+  máquinas (968 en una, 999 en otra), así que no se puede fijar al construir la imagen como en el
+  ejemplo del enunciado (`groupadd docker` crea un GID que no coincide). Se define en `.env` como
+  `DOCKER_GID` (`stat -c %g /var/run/docker.sock`) y el servicio `jenkins` lo recibe con `group_add`.
+  Así la imagen termina en `USER jenkins` y el contenedor nunca corre como root (regla de SonarQube
+  "no ejecutar contenedores como root"). Jenkins expone `DOCKER_GID` como variable de entorno y los
+  Jenkinsfile la pasan con `--group-add` a los agentes que también usan el socket.
 - **Setup Wizard desactivado**: con plugins y administrador definidos como código, el wizard solo
   agregaría un paso manual.
 - **CSP relajado** (`-Dhudson.model.DirectoryBrowserSupport.CSP=`): sin esto Jenkins bloquea el
@@ -606,8 +606,7 @@ rhm-database-infrastructure/
 ├── jenkins/
 │   ├── Dockerfile         ← imagen de Jenkins: plugins + cliente Docker + JCasC
 │   ├── plugins.txt        ← plugins preinstalados
-│   ├── casc.yaml          ← usuario, credenciales, SonarQube, variables y jobs (JCasC + Job DSL)
-│   └── entrypoint.sh      ← permiso sobre el socket Docker y arranque como usuario jenkins
+│   └── casc.yaml          ← usuario, credenciales, SonarQube, variables y jobs (JCasC + Job DSL)
 ├── sonarqube/
 │   └── init.sh            ← contraseña, Quality Gate, proyectos, webhook y token (idempotente)
 └── ci/

@@ -19,8 +19,7 @@ COPY --from=docker:29-cli /usr/local/libexec/docker/cli-plugins /usr/local/libex
 COPY casc.yaml /usr/share/jenkins/casc/jenkins.yaml
 ENV CASC_JENKINS_CONFIG=/usr/share/jenkins/casc/jenkins.yaml
 
-# El GID del socket Docker cambia entre máquinas (968 en una, 999 en otra...), así que no se puede
-# fijar al construir. El entrypoint lo detecta al arrancar, da acceso al usuario jenkins y vuelve a
-# bajar a ese usuario antes de lanzar Jenkins (ver entrypoint.sh).
-COPY --chmod=755 entrypoint.sh /usr/local/bin/rhm-entrypoint.sh
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/rhm-entrypoint.sh"]
+# Jenkins corre siempre como el usuario sin privilegios `jenkins` (uid 1000). El acceso al socket
+# Docker del host no requiere root: docker-compose.yml agrega el GID del socket con `group_add`
+# (variable DOCKER_GID del .env, que cambia entre máquinas).
+USER jenkins
