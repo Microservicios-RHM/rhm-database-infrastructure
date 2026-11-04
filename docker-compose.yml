@@ -423,6 +423,129 @@ services:
     networks:
       - microservices-network
 
+  # ------------------------------------------------------------------------------------------------
+  # Integración continua (Reto 7): Jenkins, SonarQube y registry local de imágenes.
+  # ------------------------------------------------------------------------------------------------
+
+  jenkins:
+    container_name: jenkins
+    build:
+      context: ./jenkins
+      dockerfile: Dockerfile
+    image: rhm-jenkins
+    restart: unless-stopped
+    environment:
+      # Sin Setup Wizard: plugins preinstalados en la imagen y administrador creado por JCasC.
+      # CSP vacío: sin él Jenkins bloquea el JavaScript de los reportes HTML publicados
+      # (cucumber.html, cobertura de SimpleCov) y se ven en blanco. Aceptable en un CI local.
+      JAVA_OPTS: >-
+        -Djenkins.install.runSetupWizard=false
+        -Dhudson.model.DirectoryBrowserSupport.CSP=
+      JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-change_jenkins_password}
+      JENKINS_PUBLIC_URL: http://localhost:${JENKINS_HOST_PORT:-9090}/
+      RHM_GIT_BASE_URL: ${RHM_GIT_BASE_URL:-https://github.com/Microservicios-RHM}
+      RHM_GIT_BRANCH: ${RHM_GIT_BRANCH:-main}
+      RHM_REGISTRY: localhost:${REGISTRY_HOST_PORT:-5000}
+      # Mismas credenciales del ADMIN semilla de auth-service: la etapa E2E las usa en su stack.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_admin_password}
+    ports:
+      - "${JENKINS_HOST_PORT:-9090}:8080"   # interfaz web
+      - "127.0.0.1:50000:50000"             # agentes remotos (JNLP); no se usan por ahora
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      # Docker del host: los pipelines construyen imágenes y levantan el stack E2E con él.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sonar-token:/run/sonar:ro
+    depends_on:
+      sonar-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8080/login || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    networks:
+      - microservices-network
+
+  sonar-db:
+    image: postgres:17-alpine
+    container_name: sonar-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sonar
+      POSTGRES_USER: ${SONAR_DB_USER:-sonar}
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:-sonar}
+    volumes:
+      - sonar-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: sonarqube
+    restart: unless-stopped
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
+      SONAR_JDBC_USERNAME: ${SONAR_DB_USER:-sonar}
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:-sonar}
+      # Elasticsearch embebido sin mmap: evita exigir vm.max_map_count >= 262144 en el host.
+      SONAR_SEARCH_JAVAADDITIONALOPTS: -Dnode.store.allow_mmap=false
+    ports:
+      - "${SONAR_HOST_PORT:-9000}:9000"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-logs:/opt/sonarqube/logs
+      - sonarqube-extensions:/opt/sonarqube/extensions
+    depends_on:
+      sonar-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - microservices-network
+
+  # One-shot: cambia la contraseña de admin, crea el Quality Gate (cobertura >= 70 %), los proyectos,
+  # el webhook hacia Jenkins y el token de análisis. Termina y Jenkins arranca después.
+  sonar-init:
+    image: curlimages/curl:8.17.0
+    container_name: sonar-init
+    user: root
+    entrypoint: ["sh", "/init.sh"]
+    environment:
+      SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:-Rhm-Sonar-2026}
+    volumes:
+      - ./sonarqube/init.sh:/init.sh:ro
+      - sonar-token:/run/sonar
+    depends_on:
+      sonarqube:
+        condition: service_started
+    networks:
+      - microservices-network
+
+  registry:
+    image: registry:2
+    container_name: docker-registry
+    restart: unless-stopped
+    ports:
+      - "${REGISTRY_HOST_PORT:-5000}:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    networks:
+      - microservices-network
+
 volumes:
   employees-db-data:
     name: employees-db-data
@@ -438,6 +561,20 @@ volumes:
     name: vacations-db-data
   auth-db-data:
     name: auth-db-data
+  jenkins-data:
+    name: jenkins-data
+  sonar-token:
+    name: sonar-token
+  sonar-db-data:
+    name: sonar-db-data
+  sonarqube-data:
+    name: sonarqube-data
+  sonarqube-logs:
+    name: sonarqube-logs
+  sonarqube-extensions:
+    name: sonarqube-extensions
+  registry-data:
+    name: registry-data
 
 networks:
   microservices-network:

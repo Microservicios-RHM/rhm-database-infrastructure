@@ -1,0 +1,31 @@
+# Plugins preinstalados por jenkins-plugin-cli al construir la imagen (ver Dockerfile).
+# Sin versión fija: se resuelve la última compatible con el core LTS de la imagen base.
+
+# --- Pipeline como código ---
+workflow-aggregator
+pipeline-stage-view
+pipeline-graph-view
+git
+configuration-as-code
+job-dsl
+
+# --- Docker: agentes efímeros (agent { docker { ... } }) y docker.build/inside ---
+docker-workflow
+
+# --- Credenciales (token de SonarQube, administrador de la suite E2E) ---
+credentials
+credentials-binding
+plain-credentials
+
+# --- Calidad ---
+sonar
+
+# --- Publicación de reportes de pruebas (Reto 6) ---
+junit
+coverage
+cucumber-reports
+htmlpublisher
+
+# --- Utilidades de pipeline ---
+timestamper
+ws-cleanup
