@@ -1,0 +1,91 @@
+# Override para levantar un stack EFÍMERO y AISLADO en la etapa "E2E Tests" de los pipelines:
+#
+#   COMPOSE_PROJECT_NAME=rhm-e2e-ms-employees \
+#     docker compose -f docker-compose.yml -f ci/docker-compose.e2e.yml up -d --build --wait
+#
+# Por qué hace falta: el docker-compose.yml de desarrollo fija container_name, nombres de volumen,
+# nombre de red y puertos del host. Sin este override, el stack del pipeline chocaría con el que el
+# equipo tiene levantado y —peor— `docker compose down -v` borraría los volúmenes de desarrollo.
+# Con él, cada job tiene su propio proyecto Compose (COMPOSE_PROJECT_NAME):
+#
+#   - contenedores sin nombre fijo     → <proyecto>-<servicio>-1
+#   - volúmenes y red con nombre propio → se crean vacíos y `down -v` solo borra los suyos
+#   - sin puertos publicados            → dos pipelines a la vez no compiten por el 8080 del host
+#   - Jenkins, SonarQube y el registry quedan fuera (perfil "ci-infra" que nunca se activa)
+#
+# Requiere Docker Compose >= 2.24 (etiquetas !reset / !override).
+
+services:
+  # --- Infraestructura CI: no forma parte del sistema bajo prueba ---------------------------------
+  jenkins:     { profiles: [ci-infra] }
+  sonar-db:    { profiles: [ci-infra] }
+  sonarqube:   { profiles: [ci-infra] }
+  sonar-init:  { profiles: [ci-infra] }
+  registry:    { profiles: [ci-infra] }
+
+  # --- Sistema bajo prueba ------------------------------------------------------------------------
+  message-broker:
+    container_name: !reset null
+    ports: !reset []
+  mailhog:
+    container_name: !reset null
+    ports: !reset []
+
+  database-empleados:     { container_name: !reset null }
+  database-notificaciones: { container_name: !reset null }
+  database-perfiles:      { container_name: !reset null }
+  database-vacaciones:    { container_name: !reset null }
+  database-auth:          { container_name: !reset null }
+
+  database-departamentos:
+    container_name: !reset null
+    # El compose de desarrollo monta ../ms-departments/database/init desde el disco. Jenkins habla
+    # con el Docker del HOST, que resolvería esa ruta en el host (donde no existe el workspace de
+    # Jenkins) y montaría una carpeta vacía: la base arrancaría sin esquema. Aquí los scripts se
+    # copian dentro de una imagen derivada; el contexto de build sí lo envía el cliente Docker.
+    image: ${COMPOSE_PROJECT_NAME:?}-database-departamentos
+    build:
+      context: ../ms-departments/database
+      dockerfile_inline: |
+        FROM mysql:8.4
+        COPY init/ /docker-entrypoint-initdb.d/
+    volumes: !override
+      - departments-db-data:/var/lib/mysql
+
+  empleados-service:
+    container_name: !reset null
+    # En desarrollo se llama "servidor-empleados"; aquí se separa para no pisar esa imagen.
+    image: ${COMPOSE_PROJECT_NAME:?}-empleados-service
+  departamentos-service:  { container_name: !reset null }
+  notificaciones-service: { container_name: !reset null }
+  perfiles-service:       { container_name: !reset null }
+  vacaciones-service:     { container_name: !reset null }
+  auth-service:           { container_name: !reset null }
+  api-gateway:
+    container_name: !reset null
+    ports: !reset []
+
+volumes:
+  employees-db-data:     { name: "${COMPOSE_PROJECT_NAME:?}-employees-db-data" }
+  departments-db-data:   { name: "${COMPOSE_PROJECT_NAME:?}-departments-db-data" }
+  broker-data:           { name: "${COMPOSE_PROJECT_NAME:?}-broker-data" }
+  notifications-db-data: { name: "${COMPOSE_PROJECT_NAME:?}-notifications-db-data" }
+  profiles-db-data:      { name: "${COMPOSE_PROJECT_NAME:?}-profiles-db-data" }
+  vacations-db-data:     { name: "${COMPOSE_PROJECT_NAME:?}-vacations-db-data" }
+  auth-db-data:          { name: "${COMPOSE_PROJECT_NAME:?}-auth-db-data" }
+
+  # Volúmenes de la infraestructura CI: sus servicios no se levantan en el stack E2E, pero se
+  # renombran igual para que `down -v` de este proyecto jamás pueda tocar los datos de Jenkins o
+  # SonarQube.
+  jenkins-data: { name: "${COMPOSE_PROJECT_NAME:?}-jenkins-data" }
+  sonar-token: { name: "${COMPOSE_PROJECT_NAME:?}-sonar-token" }
+  sonar-db-data: { name: "${COMPOSE_PROJECT_NAME:?}-sonar-db-data" }
+  sonarqube-data: { name: "${COMPOSE_PROJECT_NAME:?}-sonarqube-data" }
+  sonarqube-logs: { name: "${COMPOSE_PROJECT_NAME:?}-sonarqube-logs" }
+  sonarqube-extensions: { name: "${COMPOSE_PROJECT_NAME:?}-sonarqube-extensions" }
+  registry-data: { name: "${COMPOSE_PROJECT_NAME:?}-registry-data" }
+
+networks:
+  microservices-network:
+    # La suite BDD se une a esta red para hablar con http://api-gateway:8080.
+    name: "${COMPOSE_PROJECT_NAME:?}-network"

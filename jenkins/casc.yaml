@@ -1,0 +1,116 @@
+# Jenkins Configuration as Code (JCasC). Se aplica en cada arranque: lo que se cambie a mano en la
+# interfaz y no esté aquí se pierde al recrear el contenedor. Los ${VAR} se resuelven con las
+# variables de entorno del contenedor (ver el servicio `jenkins` del docker-compose.yml).
+
+jenkins:
+  systemMessage: "CI de la plataforma RHM — configuración cargada desde jenkins/casc.yaml"
+  numExecutors: 2
+  mode: NORMAL
+  # El Setup Wizard está desactivado (runSetupWizard=false): el administrador se crea aquí.
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_USER}"
+          name: "Administrador CI"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  globalNodeProperties:
+    - envVars:
+        env:
+          # Origen de los repositorios. Los jobs y la etapa E2E clonan desde aquí.
+          - key: RHM_GIT_BASE_URL
+            value: "${RHM_GIT_BASE_URL}"
+          - key: RHM_GIT_BRANCH
+            value: "${RHM_GIT_BRANCH}"
+          # Registry local donde la etapa Publish deja las imágenes.
+          - key: RHM_REGISTRY
+            value: "${RHM_REGISTRY}"
+          # Red Docker del stack: los agentes que necesitan hablar con SonarQube se unen a ella.
+          - key: RHM_CI_NETWORK
+            value: "microservices-network"
+
+unclassified:
+  location:
+    url: "${JENKINS_PUBLIC_URL}"
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      - name: "sonarqube"
+        serverUrl: "http://sonarqube:9000"
+        credentialsId: "sonarqube-token"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # Token de análisis generado por el contenedor sonar-init (sonarqube/init.sh) y compartido
+          # por el volumen sonar-token. Nunca aparece en un Jenkinsfile ni en el repositorio.
+          - string:
+              scope: GLOBAL
+              id: "sonarqube-token"
+              description: "Token de análisis de SonarQube (generado por sonar-init)"
+              secret: "${readFile:/run/sonar/token}"
+          # Administrador semilla de auth-service en el stack efímero de la etapa E2E. La suite BDD
+          # lo usa para crear empleados; el pipeline lo inyecta en el compose y en la suite.
+          - usernamePassword:
+              scope: GLOBAL
+              id: "e2e-admin"
+              description: "ADMIN semilla del stack E2E (auth-service)"
+              username: "${ADMIN_USERNAME}"
+              password: "${ADMIN_PASSWORD}"
+
+jobs:
+  # Punto 1: pipeline de verificación de la integración Jenkins ↔ Docker del host.
+  - script: |
+      pipelineJob('verificacion-docker') {
+        description('Verifica que Jenkins puede usar el Docker del host (Reto 7, punto 1).')
+        definition {
+          cps {
+            sandbox(true)
+            script('''
+              pipeline {
+                agent any
+                stages {
+                  stage('Verificación') {
+                    steps {
+                      echo '✅ Jenkins está correctamente configurado'
+                      sh 'docker --version'
+                      sh 'docker compose version'
+                      sh 'docker ps'
+                    }
+                  }
+                }
+              }
+            '''.stripIndent())
+          }
+        }
+      }
+
+  # Un job por microservicio. El pipeline vive en el Jenkinsfile de cada repositorio
+  # (Pipeline as Code); aquí solo se dice de dónde leerlo. JCasC reemplaza ${RHM_GIT_*} antes de
+  # ejecutar el script, por eso el resto usa concatenación y no interpolación de Groovy.
+  - script: |
+      [
+        'ms-employees': 'empleados-service: Node.js 24 + TypeScript',
+        'ms-vacation' : 'vacaciones-service: Ruby 3.4 + Sinatra',
+      ].each { repo, descripcion ->
+        pipelineJob(repo) {
+          description('CI de ' + repo + ' (' + descripcion + '). Definido en el Jenkinsfile del repositorio.')
+          logRotator { numToKeep(30) }
+          definition {
+            cpsScm {
+              scm {
+                git {
+                  remote { url('${RHM_GIT_BASE_URL}/' + repo + '.git') }
+                  branches('*/${RHM_GIT_BRANCH}')
+                }
+              }
+              scriptPath('Jenkinsfile')
+              lightweight(true)
+            }
+          }
+        }
+      }
