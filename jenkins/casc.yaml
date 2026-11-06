@@ -31,6 +31,9 @@ jenkins:
           # Red Docker del stack: los agentes que necesitan hablar con SonarQube se unen a ella.
           - key: RHM_CI_NETWORK
             value: "microservices-network"
+          # API Gateway del stack efímero de la etapa E2E (BASE_URL de la suite BDD).
+          - key: E2E_BASE_URL
+            value: "${E2E_BASE_URL}"
 
 unclassified:
   location:
@@ -39,7 +42,7 @@ unclassified:
     buildWrapperEnabled: true
     installations:
       - name: "sonarqube"
-        serverUrl: "http://sonarqube:9000"
+        serverUrl: "${SONAR_INTERNAL_URL}"
         credentialsId: "sonarqube-token"
 
 credentials:
