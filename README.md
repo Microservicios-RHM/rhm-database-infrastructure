@@ -365,6 +365,17 @@ git push ─▶ Jenkins (pollSCM) ─▶ Checkout ─▶ Build ─▶ Test ─�
 | SonarQube | http://localhost:9000 | `admin` | `Rhm-Sonar-2026` (`SONAR_ADMIN_PASSWORD`; `admin/admin` se reemplaza solo) |
 | Registry | http://localhost:5000/v2/_catalog | — | — |
 
+Las URLs se configuran en `.env`; sin definirlas se usan los valores de la tabla:
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `JENKINS_PUBLIC_URL` | `http://localhost:${JENKINS_HOST_PORT}/` | URL de Jenkins en los enlaces que genera |
+| `SONAR_PUBLIC_URL` | `http://localhost:${SONAR_HOST_PORT}` | Enlace "SonarQube" de cada build (`sonar.core.serverBaseURL`) |
+| `SONAR_INTERNAL_URL` | `http://sonarqube:9000` | Jenkins, el scanner y `sonar-init` hablan con SonarQube |
+| `SONAR_WEBHOOK_URL` | `http://jenkins:8080/sonarqube-webhook/` | Aviso de SonarQube que espera `waitForQualityGate` |
+| `RHM_REGISTRY` | `localhost:${REGISTRY_HOST_PORT}` | Registry donde publica la etapa Publish |
+| `E2E_BASE_URL` | `http://api-gateway:8080` | API Gateway del stack efímero para la suite BDD |
+
 ### Puesta en marcha
 
 #### a. Levantar el sistema con Jenkins incluido

@@ -443,10 +443,14 @@ services:
         -Dhudson.model.DirectoryBrowserSupport.CSP=
       JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
       JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-change_jenkins_password}
-      JENKINS_PUBLIC_URL: http://localhost:${JENKINS_HOST_PORT:-9090}/
+      JENKINS_PUBLIC_URL: ${JENKINS_PUBLIC_URL:-http://localhost:${JENKINS_HOST_PORT:-9090}/}
+      # URL con la que Jenkins y sus agentes llegan a SonarQube (red Docker, no el navegador).
+      SONAR_INTERNAL_URL: ${SONAR_INTERNAL_URL:-http://sonarqube:9000}
+      # URL del API Gateway del stack efímero contra la que corre la suite BDD en la etapa E2E.
+      E2E_BASE_URL: ${E2E_BASE_URL:-http://api-gateway:8080}
       RHM_GIT_BASE_URL: ${RHM_GIT_BASE_URL:-https://github.com/Microservicios-RHM}
       RHM_GIT_BRANCH: ${RHM_GIT_BRANCH:-main}
-      RHM_REGISTRY: localhost:${REGISTRY_HOST_PORT:-5000}
+      RHM_REGISTRY: ${RHM_REGISTRY:-localhost:${REGISTRY_HOST_PORT:-5000}}
       # Mismas credenciales del ADMIN semilla de auth-service: la etapa E2E las usa en su stack.
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_admin_password}
@@ -531,6 +535,11 @@ services:
     entrypoint: ["sh", "/init.sh"]
     environment:
       SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:-Rhm-Sonar-2026}
+      # Base de los enlaces al dashboard que Jenkins muestra en cada build (vistos desde el navegador).
+      SONAR_PUBLIC_URL: ${SONAR_PUBLIC_URL:-http://localhost:${SONAR_HOST_PORT:-9000}}
+      SONAR_URL: ${SONAR_INTERNAL_URL:-http://sonarqube:9000}
+      # A dónde avisa SonarQube el resultado del análisis (lo espera waitForQualityGate).
+      SONAR_WEBHOOK_URL: ${SONAR_WEBHOOK_URL:-http://jenkins:8080/sonarqube-webhook/}
     volumes:
       - ./sonarqube/init.sh:/init.sh:ro
       - sonar-token:/run/sonar

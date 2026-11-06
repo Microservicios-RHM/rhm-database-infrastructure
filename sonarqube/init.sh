@@ -4,7 +4,8 @@
 # deja el mismo estado, exista o no lo creado en la ejecución anterior.
 #
 #   1. Espera a que SonarQube esté UP.
-#   2. Cambia la contraseña por defecto admin/admin por SONAR_ADMIN_PASSWORD.
+#   2. Cambia la contraseña por defecto admin/admin por SONAR_ADMIN_PASSWORD y fija la URL pública
+#      (sonar.core.serverBaseURL), que es la que usan los enlaces "SonarQube" de cada build en Jenkins.
 #   3. Crea el Quality Gate "RHM" (cobertura >= 70 %) y lo marca como gate por defecto.
 #   4. Crea los proyectos analizados por los pipelines.
 #   5. Registra el webhook hacia Jenkins (lo necesita waitForQualityGate).
@@ -15,6 +16,7 @@ SONAR_URL=${SONAR_URL:-http://sonarqube:9000}
 ADMIN_PASSWORD=${SONAR_ADMIN_PASSWORD:?Defina SONAR_ADMIN_PASSWORD}
 QUALITY_GATE=${SONAR_QUALITY_GATE:-RHM}
 PROJECTS=${SONAR_PROJECTS:-"ms-employees ms-vacation"}
+PUBLIC_URL=${SONAR_PUBLIC_URL:-http://localhost:9000}
 WEBHOOK_URL=${SONAR_WEBHOOK_URL:-http://jenkins:8080/sonarqube-webhook/}
 TOKEN_NAME=${SONAR_TOKEN_NAME:-jenkins-ci}
 TOKEN_FILE=${SONAR_TOKEN_FILE:-/run/sonar/token}
@@ -61,6 +63,12 @@ else
   log "ERROR: ni SONAR_ADMIN_PASSWORD ni admin/admin son válidos"
   exit 1
 fi
+
+# URL pública: sin ella el scanner arma el enlace al dashboard con la URL interna de Docker
+# (http://sonarqube:9000), que el navegador no resuelve.
+api POST /api/settings/set --data-urlencode key=sonar.core.serverBaseURL --data-urlencode "value=$PUBLIC_URL"
+[ "$STATUS" = 204 ] || [ "$STATUS" = 200 ] || { log "no se pudo fijar la URL pública: $BODY"; exit 1; }
+log "URL pública de SonarQube: $PUBLIC_URL"
 
 # --- 3. Quality Gate ------------------------------------------------------------------------------
 api GET /api/qualitygates/show --get --data-urlencode "name=$QUALITY_GATE"
