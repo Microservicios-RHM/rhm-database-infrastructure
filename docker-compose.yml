@@ -51,7 +51,6 @@ services:
       - microservices-network
 
   empleados-service:
-    container_name: empleados-service
     image: servidor-empleados
     build:
       context: ../ms-employees
@@ -85,6 +84,8 @@ services:
       CACHE_ADMIN_TOKEN: ${CACHE_ADMIN_TOKEN:-change_this_cache_admin_token}
     expose:
       - "8080"
+    deploy:
+      replicas: 2
     depends_on:
       database-empleados:
         condition: service_healthy
@@ -124,7 +125,6 @@ services:
       - microservices-network
 
   departamentos-service:
-    container_name: departamentos-service
     build:
       context: ../ms-departments
       dockerfile: Dockerfile
@@ -139,6 +139,8 @@ services:
       DB_CHARSET: utf8mb4
     expose:
       - "80"
+    deploy:
+      replicas: 2
     depends_on:
       database-departamentos:
         condition: service_healthy
@@ -229,7 +231,6 @@ services:
       - microservices-network
 
   perfiles-service:
-    container_name: perfiles-service
     build:
       context: ../ms-profiles
       dockerfile: Dockerfile
@@ -247,6 +248,8 @@ services:
       BROKER_QUEUE: perfiles.queue
     expose:
       - "8080"
+    deploy:
+      replicas: 2
     depends_on:
       database-perfiles:
         condition: service_healthy
@@ -335,7 +338,6 @@ services:
       - microservices-network
 
   auth-service:
-    container_name: auth-service
     build:
       context: ../auth-service
       dockerfile: Dockerfile
@@ -368,6 +370,8 @@ services:
       BROKER_QUEUE: auth.queue
     expose:
       - "8080"
+    deploy:
+      replicas: 2
     depends_on:
       database-auth:
         condition: service_healthy
@@ -383,7 +387,6 @@ services:
       - microservices-network
 
   api-gateway:
-    container_name: api-gateway
     build:
       context: ../api-gateway
       dockerfile: Dockerfile
@@ -399,8 +402,8 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8080
       JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret}
       JWT_ISSUER: ${JWT_ISSUER:-auth-service}
-    ports:
-      - "8080:8080"
+    deploy:
+      replicas: 2
     depends_on:
       auth-service:
         condition: service_healthy
@@ -460,7 +463,7 @@ services:
     group_add:
       - "${DOCKER_GID:?Defina DOCKER_GID en .env (stat -c %g /var/run/docker.sock)}"
     ports:
-      - "${JENKINS_HOST_PORT:-9090}:8080"   # interfaz web
+      - "${JENKINS_HOST_PORT:-8090}:8080"   # interfaz web
       - "127.0.0.1:50000:50000"             # agentes remotos (JNLP); no se usan por ahora
     volumes:
       - jenkins-data:/var/jenkins_home
