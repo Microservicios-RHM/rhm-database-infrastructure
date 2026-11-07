@@ -1,5 +1,22 @@
 # Plataforma RHM — infraestructura
 
+Este es el repositorio de infraestructura y orquestación de la plataforma. Los microservicios se
+mantienen en repositorios Git independientes; este repositorio solo concentra el Compose, el borde
+Nginx, observabilidad, CI, scripts y documentación transversal.
+
+Ejecute el stack desde aquí:
+
+```bash
+cp .env.example .env
+./scripts/setup-secrets.sh
+docker compose up --build -d --wait
+```
+
+La entrada pública es `http://localhost:8080` a través de `edge` (Nginx); el contenedor
+`api-gateway` no publica puertos directamente. La configuración de Grafana usa el secreto local
+`secrets/grafana_admin_password`. Los demás secretos todavía conservan la configuración heredada
+por variables de entorno y se migrarán progresivamente; nunca versionar `secrets/` ni `.env`.
+
 Este repositorio contiene el único `docker-compose.yml` del sistema. Levanta el API Gateway, los
 microservicios y sus bases de datos aisladas con un solo comando.
 
