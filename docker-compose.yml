@@ -194,6 +194,7 @@ services:
       SMTP_PORT: 1025
       SMTP_FROM: ${SMTP_FROM:-notificaciones@rhm.local}
       SMTP_USE_TLS: "false"
+      NOTIFICATION_TEMPLATE_DIR: /app/templates
     expose:
       - "8080"
     depends_on:
