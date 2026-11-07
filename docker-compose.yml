@@ -3,7 +3,6 @@ name: rhm-platform
 services:
   message-broker:
     image: rabbitmq:4-management-alpine
-    container_name: message-broker
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${BROKER_USER:-admin}
@@ -24,7 +23,6 @@ services:
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
-    container_name: mailhog
     restart: unless-stopped
     ports:
       - "127.0.0.1:${MAILHOG_UI_HOST_PORT:-8025}:8025"
@@ -33,7 +31,6 @@ services:
 
   database-empleados:
     image: postgres:17-alpine
-    container_name: database-empleados
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_EMPLOYEES_NAME:-employees_db}
@@ -105,7 +102,6 @@ services:
 
   database-departamentos:
     image: mysql:8.4
-    container_name: database-departamentos
     restart: unless-stopped
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
@@ -156,7 +152,6 @@ services:
 
   database-notificaciones:
     image: postgres:17-alpine
-    container_name: database-notificaciones
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NOTIFICATIONS_NAME:-notifications_db}
@@ -174,7 +169,6 @@ services:
       - microservices-network
 
   notificaciones-service:
-    container_name: notificaciones-service
     build:
       context: ../ms-notifications
       dockerfile: Dockerfile
@@ -215,7 +209,6 @@ services:
 
   database-perfiles:
     image: postgres:17-alpine
-    container_name: database-perfiles
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_PROFILES_NAME:-profiles_db}
@@ -268,7 +261,6 @@ services:
 
   database-vacaciones:
     image: postgres:17-alpine
-    container_name: database-vacaciones
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_VACATIONS_NAME:-vacations_db}
@@ -286,7 +278,6 @@ services:
       - microservices-network
 
   vacaciones-service:
-    container_name: vacaciones-service
     build:
       context: ../ms-vacation
       dockerfile: Dockerfile
@@ -322,7 +313,6 @@ services:
 
   database-auth:
     image: postgres:17-alpine
-    container_name: database-auth
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_AUTH_NAME:-auth_db}
@@ -433,7 +423,6 @@ services:
   # ------------------------------------------------------------------------------------------------
 
   jenkins:
-    container_name: jenkins
     build:
       context: ./jenkins
       dockerfile: Dockerfile
@@ -486,7 +475,6 @@ services:
 
   sonar-db:
     image: postgres:17-alpine
-    container_name: sonar-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: sonar
@@ -505,7 +493,6 @@ services:
 
   sonarqube:
     image: sonarqube:lts-community
-    container_name: sonarqube
     restart: unless-stopped
     environment:
       SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
@@ -535,7 +522,6 @@ services:
   # el webhook hacia Jenkins y el token de análisis. Termina y Jenkins arranca después.
   sonar-init:
     image: curlimages/curl:8.17.0
-    container_name: sonar-init
     user: root
     entrypoint: ["sh", "/init.sh"]
     environment:
@@ -556,7 +542,6 @@ services:
 
   registry:
     image: registry:2
-    container_name: docker-registry
     restart: unless-stopped
     ports:
       - "${REGISTRY_HOST_PORT:-5000}:5000"
