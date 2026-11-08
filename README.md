@@ -338,7 +338,7 @@ cuando terminan y la da de baja cuando lo retiran.
 Para obtener un token de prueba:
 
 ```bash
-curl -s -X POST http://localhost:8080/auth/login   -H "Content-Type: application/json"   -d '{"username":"admin","password":"change_admin_password"}'
+curl -s -X POST http://localhost:8080/auth/login   -H "Content-Type: application/json"   -d '{"username":"admin","password":"rhmUQ"}'
 ```
 
 Esa cuenta administradora se crea sola al arrancar. Sin ella nadie podría crear el primer empleado,
