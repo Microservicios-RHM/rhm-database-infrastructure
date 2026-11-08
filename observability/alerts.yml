@@ -13,3 +13,15 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "High 5xx rate in {{ $labels.service }}"
+      - alert: DepartmentCircuitBreakerOpen
+        expr: rhm_departments_circuit_breaker_open == 1
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Department circuit breaker is open"
+      - alert: RabbitMqQueueBacklog
+        expr: sum(rabbitmq_queue_messages_ready) by (queue) > 50
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "RabbitMQ queue {{ $labels.queue }} has more than 50 ready messages"

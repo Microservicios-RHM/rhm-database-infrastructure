@@ -10,7 +10,7 @@ services:
 
   promtail:
     image: grafana/promtail:3.3.2
-    command: -config.file=/etc/promtail/config.yml
+    command: --config.file=/etc/promtail/config.yml
     volumes:
       - ./promtail-config.yml:/etc/promtail/config.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -25,6 +25,16 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+    depends_on: [alertmanager]
+    networks: [microservices-network]
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command: --config.file=/etc/alertmanager/alertmanager.yml
+    ports:
+      - "127.0.0.1:${ALERTMANAGER_HOST_PORT:-9093}:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     networks: [microservices-network]
 
   jaeger:

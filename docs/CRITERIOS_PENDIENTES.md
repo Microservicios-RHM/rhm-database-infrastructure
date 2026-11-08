@@ -64,6 +64,9 @@ Implementado:
 - ✅ Compose despliega Loki, Promtail, Prometheus, Grafana y Jaeger.
 - ✅ Gateway expone métricas HTTP/de proceso; Grafana tiene datasources y dashboard inicial.
 - ✅ Jaeger recibe trazas de servicios Node, Python y Go instrumentados.
+- ✅ Alertmanager recibe reglas de Prometheus y entrega correo a MailHog; se validó con una alerta sintética real.
+- ✅ Prometheus recolecta los siete `/metrics` y RabbitMQ; los ocho targets estuvieron `UP` en la validación local.
+- ✅ La configuración de Prometheus, Alertmanager y Promtail fue validada con sus binarios oficiales.
 
 Pendiente crítico:
 
@@ -71,7 +74,8 @@ Pendiente crítico:
 - [ ] Logs JSON homogéneos: `timestamp`, `level`, `service`, `message`, `context`, `traceId`.
 - [ ] Completar OpenTelemetry en PHP/Ruby y dependencias HTTP, BD y AMQP.
 - [ ] Propagar/extraer `traceparent` por RabbitMQ y demostrar onboarding en Jaeger y Loki.
-- [ ] Alertas: servicio caído, 5xx, breaker abierto y acumulación de cola hacia MailHog.
+- [ ] Reconstruir Empleados y demostrar con un incidente real la métrica `rhm_departments_circuit_breaker_open`; validar también las reglas de servicio caído, 5xx y cola acumulada.
+- [ ] Corregir la desalineación de reloj de los contenedores ya existentes antes de declarar evidencia de logs recientes en Loki. Promtail ya descubre los contenedores y etiqueta sus logs.
 
 ## 4. Seguridad y configuración
 

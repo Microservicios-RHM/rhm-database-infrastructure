@@ -1,0 +1,17 @@
+global:
+  smtp_smarthost: 'mailhog:1025'
+  smtp_from: 'alertmanager@rhm.local'
+  smtp_require_tls: false
+
+route:
+  receiver: mailhog
+  group_by: ['alertname', 'job', 'service', 'queue']
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+
+receivers:
+  - name: mailhog
+    email_configs:
+      - to: 'operaciones@rhm.local'
+        send_resolved: true
