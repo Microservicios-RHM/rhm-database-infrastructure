@@ -114,13 +114,13 @@ Pendiente:
 
 - ✅ Jenkins JCasC, SonarQube, Quality Gate y registry local desde Compose.
 - ✅ Jenkins `:8090`; Prometheus `:9090`.
-- ✅ Jenkinsfile y Sonar en Empleados y Vacaciones.
+- ✅ Los siete repositorios tienen `Jenkinsfile`; los jobs JCasC apuntan a la misma rama y ejecutan checkout, compilación/lint según lenguaje, pruebas, Gitleaks, SonarQube, Quality Gate, imagen y publicación en registry.
+- ✅ Empleados y Vacaciones además publican reportes de cobertura y ejecutan la suite E2E aislada.
 
 Pendiente:
 
-- [ ] Jenkinsfile, Sonar y jobs para Gateway, Auth, Departamentos, Notificaciones y Perfiles.
-- [ ] Homologar pipeline: checkout, lint, seguridad, test/cobertura, Sonar, Quality Gate, imagen, registry y E2E.
-- [ ] Escaneo de dependencias/imágenes, lint por lenguaje y webhook/polling documentado.
+- [ ] Homologar los reportes JUnit/cobertura y una fase E2E aislada en Gateway, Auth, Departamentos, Notificaciones y Perfiles.
+- [ ] Añadir escaneo de dependencias e imágenes además de Gitleaks, y documentar webhook/polling.
 
 ## 7. Documentación y entrega
 
