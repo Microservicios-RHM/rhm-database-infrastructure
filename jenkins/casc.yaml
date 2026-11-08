@@ -122,3 +122,48 @@ jobs:
           }
         }
       }
+
+  # Pipelines multirrama: se escanean periódicamente y Jenkins crea un subjob por cada rama que
+  # contenga Jenkinsfile. Los jobs monorrama anteriores se conservan temporalmente para mantener
+  # su historial; estos son los que se deben usar para seleccionar la rama desde la UI.
+  - script: |
+      [
+        'ms-employees': 'empleados-service: Node.js 24 + TypeScript',
+        'api-gateway' : 'api-gateway: Node.js 24 + TypeScript',
+        'auth-service': 'auth-service: Node.js 24 + TypeScript',
+        'ms-departments': 'departamentos-service: PHP 8.3',
+        'ms-notifications': 'notificaciones-service: Python 3.13',
+        'ms-profiles' : 'perfiles-service: Go 1.26',
+        'ms-vacation' : 'vacaciones-service: Ruby 3.4 + Sinatra',
+      ].each { repo, descripcion ->
+        multibranchPipelineJob(repo + '-branches') {
+          description('Pipeline multirrama de ' + repo + ' (' + descripcion + '). Cada rama con Jenkinsfile aparece como un subjob ejecutable.')
+          orphanedItemStrategy {
+            discardOldItems {
+              numToKeep(20)
+              daysToKeep(30)
+            }
+          }
+          branchSources {
+            branchSource {
+              source {
+                git {
+                  id('rhm-' + repo + '-branches')
+                  remote('${RHM_GIT_BASE_URL}/' + repo + '.git')
+                  includes('*')
+                }
+              }
+            }
+          }
+          factory {
+            workflowBranchProjectFactory {
+              scriptPath('Jenkinsfile')
+            }
+          }
+          triggers {
+            periodicFolderTrigger {
+              interval('5m')
+            }
+          }
+        }
+      }
