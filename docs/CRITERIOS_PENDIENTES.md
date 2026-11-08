@@ -1,150 +1,140 @@
 # Criterios pendientes — proyecto final
 
-> Revisión contrastada con `proyectoFinal.pdf`, el código de los nueve repositorios y la configuración real de `rhm-database-infrastructure` el 2026-11-07.
+> Estado actualizado el 2026-11-07 contra `proyectoFinal.pdf`, los nueve repositorios y la ejecución real del stack local.
 >
-> Leyenda: ✅ cumplido y verificado · 🟡 parcial o sin evidencia E2E · ❌ pendiente.
+> Leyenda: ✅ cumplido y evidenciado · 🟡 implementado pero con validación pendiente o alcance parcial · ❌ pendiente.
 
 ## Estado ejecutivo
 
 | Área | Estado | Situación real |
 |---|---|---|
-| Funcionalidad | 🟡 Avanzada | Los flujos y eventos principales existen; falta evidencia E2E completa. |
-| Calidad técnica | 🟡 Parcial | Hay pruebas en seis servicios, pero no cobertura ≥70 % homogénea ni health de dependencias. |
-| Observabilidad | 🟡 Base desplegada | Loki, Promtail, Prometheus, Grafana y Jaeger están en Compose; solo Gateway expone métricas. |
-| Seguridad | 🟡 Parcial | Hay ejemplos y un secreto Compose para Grafana; las credenciales operativas siguen usando defaults. |
-| Escalabilidad | ✅ Base implementada | Nginx, dos réplicas stateless, sin `container_name`, caché y circuit breaker activos. |
-| DevOps | 🟡 Parcial | Jenkins, SonarQube y registry funcionan; pipelines completos solo para empleados y vacaciones. |
-| Documentación | 🟡 Parcial | Infraestructura centralizada y documentos base; faltan guías, seeds y paquete final. |
+| Funcionalidad | ✅ Completa | Suite E2E: 31 escenarios, 31 exitosos, 0 fallos y 0 errores. |
+| Calidad | 🟡 Avanzada | Health real en siete servicios y gates de cobertura; falta evidencia homogénea de CI. |
+| Seguridad | 🟡 En migración | Los siete servicios soportan Compose Secrets; falta aplicarlos sobre BDs persistidas y herramientas CI. |
+| Observabilidad | 🟡 Base desplegada | Grafana, Loki, Prometheus y Jaeger están arriba; faltan métricas, trazas y alertas homogéneas. |
+| Escalabilidad | ✅ Base implementada | Nginx, dos réplicas stateless, caché y circuit breaker. |
+| DevOps | 🟡 Parcial | Jenkins, SonarQube y registry operan; pipelines completos solo en Empleados y Vacaciones. |
+| Entrega | 🟡 Parcial | Infraestructura y documentos base existen; faltan guías, seeds y ZIP final. |
 
 ## 1. Funcionalidad
 
-### Cumplido
+### Cumplido y validado
 
-- ✅ Gateway, empleados, departamentos, autenticación, perfiles, vacaciones y notificaciones; más de cuatro lenguajes y BD por dominio.
-- ✅ Onboarding, activación, login, recuperación/cambio de contraseña, RBAC y propiedad de perfiles.
-- ✅ Offboarding lógico con `RETIRADO`, auditoría y archivado del perfil.
-- ✅ RabbitMQ con envelopes y consumidores idempotentes.
-- ✅ Vacaciones valida fechas/solapamientos y publica `vacaciones.iniciadas` y `vacaciones.finalizadas`.
-- ✅ Empleados consume ambos eventos y sincroniza `ACTIVO` ↔ `EN_VACACIONES`, preservando `RETIRADO`.
-- ✅ Plantilla HTML corporativa externa con Jinja2 y `NOTIFICATION_TEMPLATE_DIR`.
-- ✅ Circuit breaker, reintentos, timeout y caché de departamentos; existe endpoint de limpieza.
-- ✅ E2E definidos para humo, onboarding, vacaciones, offboarding y seguridad.
+- ✅ Gateway, Empleados, Departamentos, Auth, Perfiles, Vacaciones y Notificaciones; más de cuatro lenguajes y persistencia independiente por servicio.
+- ✅ Onboarding: empleado, evento, cuenta, activación, contraseña, login y notificaciones.
+- ✅ Seguridad: JWT, RBAC ADMIN/USER, token inválido/sin `Bearer` y token de activación rechazado como acceso.
+- ✅ Perfiles: USER actualiza el propio perfil y recibe `403 FORBIDDEN` al modificar otro.
+- ✅ Vacaciones: fechas, solapamientos, programación, notificación y transición `ACTIVO → EN_VACACIONES → ACTIVO` mediante eventos.
+- ✅ Offboarding: retiro lógico, auditoría, notificación, bloqueo permanente y protección del retiro durante vacaciones.
+- ✅ RabbitMQ con envelopes, consumidores idempotentes y eventos `vacaciones.iniciadas` / `vacaciones.finalizadas`.
+- ✅ Plantillas HTML corporativas externas, caché, timeout, reintentos y circuit breaker de Departamentos.
+- ✅ E2E ejecutado: **31 escenarios, 31 exitosos, 0 fallos, 0 errores**.
 
-### Pendiente
+### Pendiente funcional
 
-- [ ] Ejecutar toda la suite E2E contra un stack recién levantado y guardar evidencia.
-- [ ] Añadir E2E de perfiles: actualización propia y `403` sobre perfil ajeno.
-- [ ] Probar de forma integrada la transición de estado causada por eventos de vacaciones.
-- [ ] Opcional: `GET /empleados/{id}/completo` con degradación controlada si perfiles falla.
+- [ ] Repetir los 31 E2E sobre un stack limpio con Secrets aplicados; es evidencia de configuración, no una brecha de negocio.
+- [ ] Opcional y no bloqueante: `GET /empleados/{id}/completo` con degradación si Perfiles falla.
 
 ## 2. Calidad técnica y contratos
 
-### Pruebas y cobertura
+| Servicio | Estado de pruebas |
+|---|---|
+| API Gateway | ✅ `node:test`, gate ≥70 %; última medición crítica: 98.61 %. |
+| Auth | ✅ `node:test`, gate ≥70 %; lógica crítica medida: 100 %. |
+| Departamentos | ✅ PHPUnit y pruebas de reglas de aplicación. |
+| Empleados | ✅ Unitarias/integración y `test:ci` ≥70 %. |
+| Notificaciones | ✅ Pytest configurado con `pytest-cov --cov-fail-under=70`. |
+| Perfiles | ✅ Go test, reporte y script que bloquea bajo 70 %. |
+| Vacaciones | ✅ RSpec, SimpleCov y mínimo 70 %. |
 
-| Servicio | Pruebas | Umbral ≥70 % bloqueante |
-|---|---|---|
-| Gateway | ❌ no tiene script `test` | ❌ |
-| Auth | ✅ `node:test` | ❌ solo reporta cobertura |
-| Departamentos | ✅ PHPUnit configurado | ❌ sin umbral/evidencia CI |
-| Empleados | ✅ unitarias e integración | ✅ `test:ci` exige líneas ≥70 % |
-| Notificaciones | ✅ pytest | ❌ falta `pytest-cov --cov-fail-under=70` |
-| Perfiles | ✅ `go test` | ❌ falta script que falle bajo 70 % |
-| Vacaciones | ✅ RSpec | ✅ mínimo configurado |
+- ✅ Los siete `/health` usan `{status, service, checks}`, validan BD/broker cuando aplica y responden `503` ante dependencia crítica DOWN.
+- ✅ Swagger agregado en Gateway y documentación propia por servicio.
 
-### Health, OpenAPI y contenedores
+Pendiente:
 
-- ✅ Swagger agregado en Gateway (`/swagger`) y contrato JSON en `/openapi.json`.
-- ✅ Los servicios exponen documentación propia según su tecnología.
-- ✅ Notificaciones usa multi-stage, usuario no root y plantilla externa.
-- ❌ Los `/health` siguen siendo fijos: no comprueban BD/broker, no comparten `status/service/checks` ni devuelven `503` al caer una dependencia.
-- ❌ Falta `openapi.yaml` versionado en la raíz de cada servicio y verificar respuestas 400/401/403/404/409/503.
-- [ ] Verificar y endurecer ejecución sin root en departamentos.
+- [ ] Ejecutar y conservar reportes de cobertura de los siete servicios desde CI reproducible.
+- [ ] Incrementar la cobertura de reglas de negocio; no declarar 100 % global sin evidencia por servicio.
+- [ ] Versionar `openapi.yaml` en la raíz de cada microservicio y completar respuestas 400/401/403/404/409/503.
+- [ ] Verificar ejecución sin root en Departamentos.
 
 ## 3. Observabilidad
 
-### Ya instalado
+Implementado:
 
 - ✅ Compose despliega Loki, Promtail, Prometheus, Grafana y Jaeger.
-- ✅ Promtail lee logs de contenedores; Grafana tiene datasources, dashboard inicial y reglas Prometheus de caída/5xx.
-- ✅ Gateway expone `/metrics` con métricas HTTP y de proceso.
-- ✅ Nginx es el único punto público en `:8080`.
+- ✅ Gateway expone métricas HTTP/de proceso; Grafana tiene datasources y dashboard inicial.
+- ✅ Jaeger recibe trazas de servicios Node, Python y Go instrumentados.
 
-### Pendiente crítico
+Pendiente crítico:
 
-- [ ] `/metrics` reales en los otros seis servicios, más métricas de negocio, eventos y circuit breaker.
-- [ ] Logs JSON homogéneos con `timestamp`, `level`, `service`, `message`, `context` y `traceId`.
-- [ ] OpenTelemetry para HTTP, BD y AMQP en los siete servicios.
-- [ ] Propagar/extraer `traceparent` por RabbitMQ y demostrar onboarding completo en Jaeger/Loki.
-- [ ] Alertas entregables hacia MailHog u otro canal: servicio caído, 5xx, breaker abierto y cola acumulada.
+- [ ] Métricas reales y homogéneas en los siete: HTTP, errores, eventos procesados/duplicados, breaker y negocio.
+- [ ] Logs JSON homogéneos: `timestamp`, `level`, `service`, `message`, `context`, `traceId`.
+- [ ] Completar OpenTelemetry en PHP/Ruby y dependencias HTTP, BD y AMQP.
+- [ ] Propagar/extraer `traceparent` por RabbitMQ y demostrar onboarding en Jaeger y Loki.
+- [ ] Alertas: servicio caído, 5xx, breaker abierto y acumulación de cola hacia MailHog.
 
 ## 4. Seguridad y configuración
 
-### Ya implementado
+Implementado:
 
-- ✅ `.env` y `secrets/` están ignorados; existen `setup-secrets.sh` y `secrets.example/`.
-- ✅ Grafana usa `grafana_admin_password` como Docker Compose Secret.
-- ✅ BCrypt, RBAC y correos con token en lugar de contraseña.
+- ✅ `.env` y `secrets/` ignorados por Git.
+- ✅ `setup-secrets.sh` crea secretos locales; BD con claves independientes.
+- ✅ Los siete microservicios leen `/run/secrets/*` mediante `*_FILE`.
+- ✅ Compose monta secretos de BD, RabbitMQ, JWT, administrador semilla y token de caché.
+- ✅ Credenciales locales de plataforma: `admin / rhmUQ` para RabbitMQ, administrador semilla, Grafana, Jenkins y SonarQube; no se reutilizan en BD.
 
-### Pendiente crítico
+Pendiente:
 
-- [ ] Migrar a Compose Secrets BD, RabbitMQ, JWT, ADMIN, Jenkins y SonarQube.
-- [ ] Eliminar defaults secretos de Compose y exigir variables/secretos requeridos.
-- [ ] Adaptar servicios a `/run/secrets/*` o variables `*_FILE`; hoy solo Grafana lo hace.
-- [ ] Ejecutar Gitleaks sobre nueve historiales y colección Postman; conservar evidencia.
-- [ ] Evitar que URL AMQP con contraseña llegue a logs.
+- [ ] Rotar usuarios de BD persistidos o levantar stack limpio antes de reiniciar con los nuevos secretos. No borrar volúmenes sin autorización.
+- [ ] Conectar Jenkins y SonarQube a secretos de ejecución y eliminar defaults sensibles restantes.
+- [ ] Ejecutar Gitleaks en nueve historiales, Compose y colección Postman; guardar evidencia.
+- [ ] Evitar que la URL AMQP con credenciales llegue a logs.
 - [ ] Opcional: Keycloak/OIDC con JWKS.
 
 ## 5. Escalabilidad y resiliencia
 
-### Cumplido
+- ✅ Sin `container_name`.
+- ✅ Dos réplicas: Gateway, Empleados, Departamentos, Auth y Perfiles.
+- ✅ Nginx único punto público en `:8080`, con balanceo y timeouts.
+- ✅ Vacaciones en una réplica por su scheduler; requiere lock de BD/distribuido para escalar.
+- ✅ Circuit breaker, caché y fallback de Departamentos.
 
-- ✅ No hay `container_name`.
-- ✅ Dos réplicas de Gateway, empleados, departamentos, auth y perfiles.
-- ✅ Nginx balancea Gateway con timeouts/failover básicos.
-- ✅ Vacaciones tiene una réplica; su scheduler no está preparado para concurrencia.
+Pendiente:
 
-### Pendiente
-
-- [ ] Documentar la única réplica de vacaciones e implementar lock de BD si se escala.
-- [ ] Separar redes: edge, backend, messaging, data, observability y CI/CD; hoy hay una sola red.
-- [ ] Guía/demo de caída de réplica y fallback/circuit breaker de departamentos.
-- [ ] Documentar y probar timeouts/reintentos del Gateway.
+- [ ] Separar redes: edge, backend, messaging, data, observability y CI/CD.
+- [ ] Guía/evidencia de caída de réplica y disponibilidad por Nginx.
+- [ ] Guía/evidencia de fallback y circuit breaker.
+- [ ] Documentar/probar timeout y reintentos del Gateway.
 
 ## 6. DevOps
 
-### Cumplido
+- ✅ Jenkins JCasC, SonarQube, Quality Gate y registry local desde Compose.
+- ✅ Jenkins `:8090`; Prometheus `:9090`.
+- ✅ Jenkinsfile y Sonar en Empleados y Vacaciones.
 
-- ✅ Jenkins JCasC, SonarQube, Quality Gate y registry se levantan desde Compose.
-- ✅ Jenkins usa `:8090`; Prometheus conserva `:9090`.
-- ✅ Jenkinsfile y Sonar configurados en empleados y vacaciones.
-
-### Pendiente
+Pendiente:
 
 - [ ] Jenkinsfile, Sonar y jobs para Gateway, Auth, Departamentos, Notificaciones y Perfiles.
-- [ ] Homologar: checkout, lint, seguridad, test/cobertura, Sonar, Quality Gate, imagen, registry y E2E.
-- [ ] Escaneo de dependencias/imágenes y lint por lenguaje.
-- [ ] Webhook SCM o polling documentado.
+- [ ] Homologar pipeline: checkout, lint, seguridad, test/cobertura, Sonar, Quality Gate, imagen, registry y E2E.
+- [ ] Escaneo de dependencias/imágenes, lint por lenguaje y webhook/polling documentado.
 
 ## 7. Documentación y entrega
 
-### Cumplido
+- ✅ `rhm-database-infrastructure` es la fuente canónica de Compose, Nginx, scripts y documentación transversal.
+- ✅ README, arquitectura y catálogo de eventos disponibles.
 
-- ✅ `rhm-database-infrastructure` es la fuente canónica de Compose, Nginx, observabilidad, scripts y documentación transversal.
-- ✅ Existen README, `docs/arquitectura.md` y `docs/eventos.md`.
-- ✅ Se validó un arranque limpio con `docker compose up --build -d --wait` desde infraestructura.
+Pendiente:
 
-### Pendiente
-
-- [ ] El PDF exige Compose en la raíz de la entrega. Preparar un directorio/ZIP que reúna los clones y tenga Compose en su raíz, sin crear otro repo Git ni duplicar código.
-- [ ] `scripts/seed-data.sql` para departamentos/empleados y documentación de migraciones.
-- [ ] `docs/guias/` para RabbitMQ, Jenkins, SonarQube, Grafana/Loki/Prometheus y Jaeger.
-- [ ] Completar requisitos, URLs, curl de Gateway, decisiones y rotación de secretos.
-- [ ] Generar ZIP sin `.env`, `secrets/`, dependencias, cachés ni artefactos.
+- [ ] Validar arranque limpio con Secrets y repetir E2E.
+- [ ] Directorio/ZIP de entrega con Compose en su raíz, sin Git adicional ni duplicar código.
+- [ ] `scripts/seed-data.sql`, guía de migraciones y `docs/guias/` para RabbitMQ, Jenkins, Sonar, Grafana/Loki/Prometheus y Jaeger.
+- [ ] Documentar requisitos, URLs, cURL, decisiones, credenciales locales y rotación de secretos.
+- [ ] ZIP sin `.env`, `secrets/`, dependencias, cachés ni artefactos.
 
 ## Prioridad de cierre
 
-1. Health real 200/503, tests/cobertura ≥70 % y E2E ejecutados.
-2. Secrets reales y Gitleaks.
-3. Métricas, logs homogéneos, OpenTelemetry y propagación AMQP.
-4. CI/Sonar para los cinco servicios restantes.
-5. Redes, seeds, guías y paquete final.
+1. Aplicar/validar Secrets sobre stack limpio, repetir E2E y ejecutar Gitleaks.
+2. Cerrar métricas, logs, trazabilidad AMQP y alertas.
+3. Pipelines/Jenkins/Sonar de los cinco servicios faltantes.
+4. Redes, seeds y guías.
+5. Empaquetado final sin datos sensibles.
