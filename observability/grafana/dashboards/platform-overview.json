@@ -2,8 +2,10 @@
   "annotations": {"list": []},
   "editable": true,
   "panels": [
-    {"type": "timeseries", "title": "Requests by service", "targets": [{"expr": "sum(rate(http_requests_total[5m])) by (service)"}]},
-    {"type": "timeseries", "title": "Server errors", "targets": [{"expr": "sum(rate(http_requests_total{status=~'5..'}[5m])) by (service)"}]}
+    {"type": "stat", "title": "Servicios monitoreados", "targets": [{"expr": "sum(up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"})"}]},
+    {"type": "timeseries", "title": "Disponibilidad por servicio", "targets": [{"expr": "up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"}"}]},
+    {"type": "timeseries", "title": "Peticiones HTTP por servicio", "targets": [{"expr": "sum by (job) (rate({__name__=~\".+http_requests_total\"}[5m]))"}]},
+    {"type": "timeseries", "title": "Errores HTTP 5xx", "targets": [{"expr": "sum by (job) (rate({__name__=~\".+http_requests_total\",status=~\"5..\"}[5m]))"}]}
   ],
   "schemaVersion": 39,
   "title": "RHM Platform Overview",
