@@ -39,6 +39,12 @@ services:
     ports: !reset []
     secrets: !reset []
     volumes: [e2e-secret-files:/run/secrets:ro]
+    # El stack E2E usa credenciales efímeras. Arrancar RabbitMQ directamente evita
+    # que una carrera del montaje de secretos detenga todo el stack antes del healthcheck.
+    command: ["rabbitmq-server"]
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: rhmUQ
   mailhog:
     container_name: !reset null
     ports: !reset []
