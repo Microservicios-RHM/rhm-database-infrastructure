@@ -22,6 +22,8 @@ services:
   sonarqube:   { profiles: [ci-infra] }
   sonar-init:  { profiles: [ci-infra] }
   registry:    { profiles: [ci-infra] }
+  # La UI depende del registry; ambos se excluyen del stack efímero.
+  registry-ui: { profiles: [ci-infra] }
 
   # --- Sistema bajo prueba ------------------------------------------------------------------------
   message-broker:
