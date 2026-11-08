@@ -566,6 +566,22 @@ services:
     networks:
       - microservices-network
 
+  registry-ui:
+    image: joxit/docker-registry-ui:2.5.7
+    restart: unless-stopped
+    environment:
+      SINGLE_REGISTRY: "true"
+      REGISTRY_TITLE: "RHM Container Registry"
+      NGINX_PROXY_PASS_URL: http://registry:5000
+      DELETE_IMAGES: "false"
+    ports:
+      - "127.0.0.1:${REGISTRY_UI_HOST_PORT:-5080}:80"
+    depends_on:
+      registry:
+        condition: service_started
+    networks:
+      - microservices-network
+
 volumes:
   employees-db-data:
     name: employees-db-data

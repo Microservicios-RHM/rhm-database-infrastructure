@@ -42,6 +42,7 @@ microservicios y sus bases de datos aisladas con un solo comando.
 | `sonar-db` | PostgreSQL 17 | interno 5432 (sin publicar) | `sonar-db-data` |
 | `sonar-init` | one-shot (curl) que aprovisiona SonarQube | — | `sonar-token` |
 | `registry` (`docker-registry`) | Docker Registry 2 — Reto 7 | 5000 | `registry-data` |
+| `registry-ui` | Interfaz web del Registry | 5080 (solo localhost) | `registry` |
 
 La única entrada HTTP publicada para los microservicios es `http://localhost:8080`, servida por el
 Gateway. Dentro de Docker, el Gateway enruta `/empleados/*` a `empleados-service:8080`,
@@ -155,7 +156,8 @@ Health Gateway:  http://localhost:8080/health
 RabbitMQ (UI):   http://localhost:15672
 Jenkins (CI):    http://localhost:9090   (ver "Integración continua", Reto 7)
 SonarQube:       http://localhost:9000
-Registry:        http://localhost:5000/v2/_catalog
+Registry API:    http://localhost:5000/v2/_catalog
+Registry UI:     http://localhost:5080
 ```
 
 Ningún microservicio ni base de datos publica su puerto HTTP directamente al host — todos son
