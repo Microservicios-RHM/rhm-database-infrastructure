@@ -22,12 +22,16 @@ services:
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${BROKER_USER:-admin}
-      RABBITMQ_DEFAULT_PASS: ${BROKER_PASSWORD:-admin}
+      BROKER_PASSWORD_FILE: /run/secrets/broker_password
+    command: ["sh", "/bootstrap/rabbitmq-secrets.sh"]
+    secrets:
+      - broker_password
     ports:
       - "127.0.0.1:${BROKER_AMQP_HOST_PORT:-5672}:5672"
       - "127.0.0.1:${BROKER_UI_HOST_PORT:-15672}:15672"
     volumes:
       - broker-data:/var/lib/rabbitmq
+      - ./scripts/rabbitmq-secrets.sh:/bootstrap/rabbitmq-secrets.sh:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 10s
@@ -51,7 +55,9 @@ services:
     environment:
       POSTGRES_DB: ${DB_EMPLOYEES_NAME:-employees_db}
       POSTGRES_USER: ${DB_EMPLOYEES_USER:-employees_service}
-      POSTGRES_PASSWORD: ${DB_EMPLOYEES_PASSWORD:-employees_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/employees_db_password
+    secrets:
+      - employees_db_password
     volumes:
       - employees-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -80,7 +86,7 @@ services:
       DB_NAME: ${DB_EMPLOYEES_NAME:-employees_db}
       DB_SCHEMA: employees
       DB_USER: ${DB_EMPLOYEES_USER:-employees_service}
-      DB_PASSWORD: ${DB_EMPLOYEES_PASSWORD:-employees_local_password}
+      DB_PASSWORD_FILE: /run/secrets/employees_db_password
       DB_SSL: "false"
       DB_POOL_MAX: 10
       DB_CONNECT_MAX_ATTEMPTS: 5
@@ -92,11 +98,15 @@ services:
       DEPARTMENTS_TOTAL_TIMEOUT_MS: 9000
       DEPARTMENTS_CIRCUIT_BREAKER_THRESHOLD: 3
       DEPARTMENTS_CIRCUIT_BREAKER_RESET_TIMEOUT_MS: 30000
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: empleados.queue
       DEPARTMENTS_CACHE_TTL_SECONDS: 300
-      CACHE_ADMIN_TOKEN: ${CACHE_ADMIN_TOKEN:-change_this_cache_admin_token}
+      CACHE_ADMIN_TOKEN_FILE: /run/secrets/cache_admin_token
+    secrets:
+      - employees_db_password
+      - broker_url
+      - cache_admin_token
     expose:
       - "8080"
     deploy:
@@ -122,10 +132,13 @@ services:
     restart: unless-stopped
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_DEPARTMENTS_ROOT_PASSWORD:-departments_root_password}
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/departments_db_root_password
       MYSQL_DATABASE: ${DB_DEPARTMENTS_NAME:-departments_db}
       MYSQL_USER: ${DB_DEPARTMENTS_USER:-departments_service}
-      MYSQL_PASSWORD: ${DB_DEPARTMENTS_PASSWORD:-departments_local_password}
+      MYSQL_PASSWORD_FILE: /run/secrets/departments_db_password
+    secrets:
+      - departments_db_root_password
+      - departments_db_password
     volumes:
       - departments-db-data:/var/lib/mysql
       - ../ms-departments/database/init:/docker-entrypoint-initdb.d:ro
@@ -150,8 +163,10 @@ services:
       DB_PORT: 3306
       DB_NAME: ${DB_DEPARTMENTS_NAME:-departments_db}
       DB_USER: ${DB_DEPARTMENTS_USER:-departments_service}
-      DB_PASSWORD: ${DB_DEPARTMENTS_PASSWORD:-departments_local_password}
+      DB_PASSWORD_FILE: /run/secrets/departments_db_password
       DB_CHARSET: utf8mb4
+    secrets:
+      - departments_db_password
     expose:
       - "80"
     deploy:
@@ -174,7 +189,9 @@ services:
     environment:
       POSTGRES_DB: ${DB_NOTIFICATIONS_NAME:-notifications_db}
       POSTGRES_USER: ${DB_NOTIFICATIONS_USER:-notifications_service}
-      POSTGRES_PASSWORD: ${DB_NOTIFICATIONS_PASSWORD:-notifications_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/notifications_db_password
+    secrets:
+      - notifications_db_password
     volumes:
       - notifications-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -199,8 +216,8 @@ services:
       DB_PORT: 5432
       DB_NAME: ${DB_NOTIFICATIONS_NAME:-notifications_db}
       DB_USER: ${DB_NOTIFICATIONS_USER:-notifications_service}
-      DB_PASSWORD: ${DB_NOTIFICATIONS_PASSWORD:-notifications_local_password}
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      DB_PASSWORD_FILE: /run/secrets/notifications_db_password
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: notificaciones.queue
       SMTP_HOST: mailhog
@@ -208,6 +225,9 @@ services:
       SMTP_FROM: ${SMTP_FROM:-notificaciones@rhm.local}
       SMTP_USE_TLS: "false"
       NOTIFICATION_TEMPLATE_DIR: /app/templates
+    secrets:
+      - notifications_db_password
+      - broker_url
     expose:
       - "8080"
     depends_on:
@@ -232,7 +252,9 @@ services:
     environment:
       POSTGRES_DB: ${DB_PROFILES_NAME:-profiles_db}
       POSTGRES_USER: ${DB_PROFILES_USER:-profiles_service}
-      POSTGRES_PASSWORD: ${DB_PROFILES_PASSWORD:-profiles_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/profiles_db_password
+    secrets:
+      - profiles_db_password
     volumes:
       - profiles-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -257,10 +279,13 @@ services:
       DB_PORT: 5432
       DB_NAME: ${DB_PROFILES_NAME:-profiles_db}
       DB_USER: ${DB_PROFILES_USER:-profiles_service}
-      DB_PASSWORD: ${DB_PROFILES_PASSWORD:-profiles_local_password}
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      DB_PASSWORD_FILE: /run/secrets/profiles_db_password
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: perfiles.queue
+    secrets:
+      - profiles_db_password
+      - broker_url
     expose:
       - "8080"
     deploy:
@@ -285,7 +310,9 @@ services:
     environment:
       POSTGRES_DB: ${DB_VACATIONS_NAME:-vacations_db}
       POSTGRES_USER: ${DB_VACATIONS_USER:-vacations_service}
-      POSTGRES_PASSWORD: ${DB_VACATIONS_PASSWORD:-vacations_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/vacations_db_password
+    secrets:
+      - vacations_db_password
     volumes:
       - vacations-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -310,12 +337,15 @@ services:
       DB_PORT: 5432
       DB_NAME: ${DB_VACATIONS_NAME:-vacations_db}
       DB_USER: ${DB_VACATIONS_USER:-vacations_service}
-      DB_PASSWORD: ${DB_VACATIONS_PASSWORD:-vacations_local_password}
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      DB_PASSWORD_FILE: /run/secrets/vacations_db_password
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: vacaciones.queue
       SCHEDULER_ENABLED: ${VACATIONS_SCHEDULER_ENABLED:-true}
       SCHEDULER_INTERVAL_SECONDS: ${VACATIONS_SCHEDULER_INTERVAL_SECONDS:-60}
+    secrets:
+      - vacations_db_password
+      - broker_url
     expose:
       - "8080"
     depends_on:
@@ -338,7 +368,9 @@ services:
     environment:
       POSTGRES_DB: ${DB_AUTH_NAME:-auth_db}
       POSTGRES_USER: ${DB_AUTH_USER:-auth_service}
-      POSTGRES_PASSWORD: ${DB_AUTH_PASSWORD:-auth_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/auth_db_password
+    secrets:
+      - auth_db_password
     volumes:
       - auth-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -366,22 +398,27 @@ services:
       DB_NAME: ${DB_AUTH_NAME:-auth_db}
       DB_SCHEMA: auth
       DB_USER: ${DB_AUTH_USER:-auth_service}
-      DB_PASSWORD: ${DB_AUTH_PASSWORD:-auth_local_password}
+      DB_PASSWORD_FILE: /run/secrets/auth_db_password
       DB_SSL: "false"
       DB_POOL_MAX: 10
       DB_CONNECT_MAX_ATTEMPTS: 5
       DB_CONNECT_RETRY_DELAY_MS: 1000
-      JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret}
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
       JWT_ISSUER: ${JWT_ISSUER:-auth-service}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-3600}
       JWT_RESET_TTL_SECONDS: ${JWT_RESET_TTL_SECONDS:-900}
       ADMIN_EMPLOYEE_ID: ${ADMIN_EMPLOYEE_ID:-ADMIN}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@empresa.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_admin_password}
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: auth.queue
+    secrets:
+      - auth_db_password
+      - jwt_secret
+      - admin_password
+      - broker_url
     expose:
       - "8080"
     deploy:
@@ -415,8 +452,10 @@ services:
       PERFILES_SERVICE_URL: http://perfiles-service:8080
       VACACIONES_SERVICE_URL: http://vacaciones-service:8080
       AUTH_SERVICE_URL: http://auth-service:8080
-      JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret}
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
       JWT_ISSUER: ${JWT_ISSUER:-auth-service}
+    secrets:
+      - jwt_secret
     deploy:
       replicas: 2
     depends_on:
@@ -618,6 +657,20 @@ volumes:
     name: sonarqube-extensions
   registry-data:
     name: registry-data
+
+secrets:
+  broker_password: { file: ./secrets/broker_password }
+  broker_url: { file: ./secrets/broker_url }
+  jwt_secret: { file: ./secrets/jwt_secret }
+  cache_admin_token: { file: ./secrets/cache_admin_token }
+  admin_password: { file: ./secrets/admin_password }
+  employees_db_password: { file: ./secrets/employees_db_password }
+  departments_db_password: { file: ./secrets/departments_db_password }
+  departments_db_root_password: { file: ./secrets/departments_db_root_password }
+  notifications_db_password: { file: ./secrets/notifications_db_password }
+  profiles_db_password: { file: ./secrets/profiles_db_password }
+  vacations_db_password: { file: ./secrets/vacations_db_password }
+  auth_db_password: { file: ./secrets/auth_db_password }
 
 networks:
   microservices-network:
