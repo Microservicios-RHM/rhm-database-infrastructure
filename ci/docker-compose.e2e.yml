@@ -24,6 +24,14 @@ services:
   registry:    { profiles: [ci-infra] }
   # La UI depende del registry; ambos se excluyen del stack efímero.
   registry-ui: { profiles: [ci-infra] }
+  # El E2E valida contratos funcionales; observabilidad se valida en su propio
+  # flujo y no debe añadir secretos ni tiempos de arranque a cada pipeline.
+  loki:        { profiles: [ci-infra] }
+  promtail:    { profiles: [ci-infra] }
+  prometheus:  { profiles: [ci-infra] }
+  alertmanager: { profiles: [ci-infra] }
+  jaeger:      { profiles: [ci-infra] }
+  grafana:     { profiles: [ci-infra] }
 
   # --- Sistema bajo prueba ------------------------------------------------------------------------
   message-broker:
