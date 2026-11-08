@@ -150,6 +150,9 @@ jobs:
                 git {
                   id('rhm-' + repo + '-branches')
                   remote('${RHM_GIT_BASE_URL}/' + repo + '.git')
+                  traits {
+                    gitBranchDiscovery()
+                  }
                 }
               }
             }
