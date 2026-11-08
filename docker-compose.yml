@@ -74,6 +74,7 @@ services:
       LOG_LEVEL: ${EMPLOYEES_LOG_LEVEL:-info}
       LOG_PRETTY: "false"
       PORT: 8080
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       DB_HOST: database-empleados
       DB_PORT: 5432
       DB_NAME: ${DB_EMPLOYEES_NAME:-employees_db}
@@ -143,6 +144,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       APP_ENV: production
       DB_HOST: database-departamentos
       DB_PORT: 3306
@@ -190,6 +192,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_LEVEL: ${NOTIFICATIONS_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-notificaciones
@@ -247,6 +250,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_LEVEL: ${PROFILES_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-perfiles
@@ -299,6 +303,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_LEVEL: ${VACATIONS_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-vacaciones
@@ -355,6 +360,7 @@ services:
       LOG_LEVEL: ${AUTH_LOG_LEVEL:-info}
       LOG_PRETTY: "false"
       PORT: 8080
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       DB_HOST: database-auth
       DB_PORT: 5432
       DB_NAME: ${DB_AUTH_NAME:-auth_db}
@@ -402,6 +408,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8080
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       EMPLEADOS_SERVICE_URL: http://empleados-service:8080
       DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:80
       NOTIFICACIONES_SERVICE_URL: http://notificaciones-service:8080
