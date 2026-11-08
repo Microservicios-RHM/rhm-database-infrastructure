@@ -498,8 +498,8 @@ services:
         -Djenkins.install.runSetupWizard=false
         -Dhudson.model.DirectoryBrowserSupport.CSP=
       JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
-      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-change_jenkins_password}
-      JENKINS_PUBLIC_URL: ${JENKINS_PUBLIC_URL:-http://localhost:${JENKINS_HOST_PORT:-9090}/}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-rhmUQ}
+      JENKINS_PUBLIC_URL: ${JENKINS_PUBLIC_URL:-http://localhost:${JENKINS_HOST_PORT:-8090}/}
       # URL con la que Jenkins y sus agentes llegan a SonarQube (red Docker, no el navegador).
       SONAR_INTERNAL_URL: ${SONAR_INTERNAL_URL:-http://sonarqube:9000}
       # URL del API Gateway del stack efímero contra la que corre la suite BDD en la etapa E2E.
@@ -587,7 +587,7 @@ services:
     user: root
     entrypoint: ["sh", "/init.sh"]
     environment:
-      SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:-Rhm-Sonar-2026}
+      SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:-rhmUQ}
       # Base de los enlaces al dashboard que Jenkins muestra en cada build (vistos desde el navegador).
       SONAR_PUBLIC_URL: ${SONAR_PUBLIC_URL:-http://localhost:${SONAR_HOST_PORT:-9000}}
       SONAR_URL: ${SONAR_INTERNAL_URL:-http://sonarqube:9000}

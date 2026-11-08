@@ -380,8 +380,8 @@ git push ─▶ Jenkins (pollSCM) ─▶ Checkout ─▶ Build ─▶ Test ─�
 
 | Herramienta | URL | Usuario | Contraseña (por defecto, ver `.env`) |
 |---|---|---|---|
-| Jenkins | http://localhost:9090 | `admin` (`JENKINS_ADMIN_USER`) | `change_jenkins_password` (`JENKINS_ADMIN_PASSWORD`) |
-| SonarQube | http://localhost:9000 | `admin` | `Rhm-Sonar-2026` (`SONAR_ADMIN_PASSWORD`; `admin/admin` se reemplaza solo) |
+| Jenkins | http://localhost:8090 | `admin` | `rhmUQ` |
+| SonarQube | http://localhost:9000 | `admin` | `rhmUQ` (`admin/admin` se reemplaza solo) |
 | Registry | http://localhost:5000/v2/_catalog | — | — |
 
 Las URLs se configuran en `.env`; sin definirlas se usan los valores de la tabla:
