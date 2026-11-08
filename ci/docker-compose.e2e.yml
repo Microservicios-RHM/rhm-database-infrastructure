@@ -29,15 +29,17 @@ services:
   message-broker:
     container_name: !reset null
     ports: !reset []
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
   mailhog:
     container_name: !reset null
     ports: !reset []
 
-  database-empleados:     { container_name: !reset null }
-  database-notificaciones: { container_name: !reset null }
-  database-perfiles:      { container_name: !reset null }
-  database-vacaciones:    { container_name: !reset null }
-  database-auth:          { container_name: !reset null }
+  database-empleados:     { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  database-notificaciones: { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  database-perfiles:      { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  database-vacaciones:    { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  database-auth:          { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
 
   database-departamentos:
     container_name: !reset null
@@ -53,19 +55,25 @@ services:
         COPY init/ /docker-entrypoint-initdb.d/
     volumes: !override
       - departments-db-data:/var/lib/mysql
+      - e2e-secret-files:/run/secrets:ro
+    secrets: !reset []
 
   empleados-service:
     container_name: !reset null
     # En desarrollo se llama "servidor-empleados"; aquí se separa para no pisar esa imagen.
     image: ${COMPOSE_PROJECT_NAME:?}-empleados-service
-  departamentos-service:  { container_name: !reset null }
-  notificaciones-service: { container_name: !reset null }
-  perfiles-service:       { container_name: !reset null }
-  vacaciones-service:     { container_name: !reset null }
-  auth-service:           { container_name: !reset null }
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+  departamentos-service:  { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  notificaciones-service: { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  perfiles-service:       { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  vacaciones-service:     { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  auth-service:           { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
   api-gateway:
     container_name: !reset null
     ports: !reset []
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
 
 volumes:
   employees-db-data:     { name: "${COMPOSE_PROJECT_NAME:?}-employees-db-data" }
@@ -75,6 +83,7 @@ volumes:
   profiles-db-data:      { name: "${COMPOSE_PROJECT_NAME:?}-profiles-db-data" }
   vacations-db-data:     { name: "${COMPOSE_PROJECT_NAME:?}-vacations-db-data" }
   auth-db-data:          { name: "${COMPOSE_PROJECT_NAME:?}-auth-db-data" }
+  e2e-secret-files:      { name: "${COMPOSE_PROJECT_NAME:?}-secret-files" }
 
   # Volúmenes de la infraestructura CI: sus servicios no se levantan en el stack E2E, pero se
   # renombran igual para que `down -v` de este proyecto jamás pueda tocar los datos de Jenkins o
