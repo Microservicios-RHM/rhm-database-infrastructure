@@ -11,7 +11,7 @@
 | Funcionalidad | ✅ Completa | Suite E2E: 31 escenarios, 31 exitosos, 0 fallos y 0 errores. |
 | Calidad | ✅ Completa | Siete pipelines y Quality Gates verdes, cobertura ≥70 %, contratos versionados y contenedores sin root. |
 | Seguridad | ✅ Completa | Secretos aplicados sobre datos persistidos y CI, Gitleaks limpio y credenciales AMQP protegidas en logs. |
-| Observabilidad | 🟡 Base desplegada | Grafana, Loki, Prometheus y Jaeger están arriba; faltan métricas, trazas y alertas homogéneas. |
+| Observabilidad | ✅ Completa | Siete servicios con métricas y trazas, logs correlacionados, dashboard y seis alertas validadas. |
 | Escalabilidad | ✅ Base implementada | Nginx, dos réplicas stateless, caché y circuit breaker. |
 | DevOps | 🟡 Avanzado | Jenkins, SonarQube y registry operan; las siete pipelines están homologadas y falta conservar evidencia de una corrida completa en Jenkins. |
 | Entrega | 🟡 Parcial | Infraestructura y guías operativas existen; faltan seeds, validación limpia y ZIP final. |
@@ -69,14 +69,14 @@ Implementado:
 - ✅ Prometheus recolecta los siete `/metrics` y RabbitMQ; los ocho targets estuvieron `UP` en la validación local.
 - ✅ La configuración de Prometheus, Alertmanager y Promtail fue validada con sus binarios oficiales.
 
-Pendiente crítico:
+Completado y validado:
 
-- [ ] Métricas reales y homogéneas en los siete: HTTP, errores, eventos procesados/duplicados, breaker y negocio.
-- [ ] Logs JSON homogéneos: `timestamp`, `level`, `service`, `message`, `context`, `traceId`.
-- [ ] Completar OpenTelemetry en PHP/Ruby y dependencias HTTP, BD y AMQP.
-- [ ] Propagar/extraer `traceparent` por RabbitMQ y demostrar onboarding en Jaeger y Loki.
-- [ ] Reconstruir Empleados y demostrar con un incidente real la métrica `rhm_departments_circuit_breaker_open`; validar también las reglas de servicio caído, 5xx y cola acumulada.
-- [ ] Corregir la desalineación de reloj de los contenedores ya existentes antes de declarar evidencia de logs recientes en Loki. Promtail ya descubre los contenedores y etiqueta sus logs.
+- ✅ Métricas reales y homogéneas en los siete: HTTP, errores, eventos, breaker y colas.
+- ✅ Logs JSON homogéneos: `timestamp`, `level`, `service`, `message`, `context`, `traceId`.
+- ✅ OpenTelemetry en PHP/Ruby y dependencias HTTP, BD y AMQP.
+- ✅ `traceparent` propagado por RabbitMQ; los siete servicios aparecen en Jaeger y los `traceId` en Loki.
+- ✅ Incidente controlado abrió `rhm_departments_circuit_breaker_open`; seis reglas de alerta validadas.
+- ✅ Stack reconstruido con reloj UTC coherente; evidencia reciente en `docs/evidencias/observabilidad-2026-11-08.md`.
 
 ## 4. Seguridad y configuración
 
@@ -141,7 +141,6 @@ Pendiente:
 
 ## Prioridad de cierre
 
-1. Cerrar métricas, logs, trazabilidad AMQP y alertas.
-2. Ejecutar las siete pipelines en Jenkins y guardar evidencia de Quality Gate, cobertura y E2E.
-3. Redes y seeds.
-4. Empaquetado final sin datos sensibles.
+1. Ejecutar las siete pipelines en Jenkins y guardar evidencia de Quality Gate, cobertura y E2E.
+2. Redes y seeds.
+3. Empaquetado final sin datos sensibles.

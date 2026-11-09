@@ -26,3 +26,4 @@ scrape_configs:
       - labels:
           level:
           service_name:
+          trace_id:
