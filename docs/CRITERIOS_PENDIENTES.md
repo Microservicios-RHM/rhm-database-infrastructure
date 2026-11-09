@@ -1,6 +1,6 @@
 # Criterios pendientes — proyecto final
 
-> Estado actualizado el 2026-11-08 contra `proyectoFinal.pdf`, los nueve repositorios y la ejecución real del stack local.
+> Estado actualizado el 2026-11-09 contra `proyectoFinal.pdf`, los nueve repositorios, el stack local y las ejecuciones finales de Jenkins.
 >
 > Leyenda: ✅ cumplido y evidenciado · 🟡 implementado pero con validación pendiente o alcance parcial · ❌ pendiente.
 
@@ -13,8 +13,8 @@
 | Seguridad | ✅ Completa | Secretos aplicados sobre datos persistidos y CI, Gitleaks limpio y credenciales AMQP protegidas en logs. |
 | Observabilidad | ✅ Completa | Siete servicios con métricas y trazas, logs correlacionados, dashboard y seis alertas validadas. |
 | Escalabilidad | ✅ Base implementada | Nginx, dos réplicas stateless, caché y circuit breaker. |
-| DevOps | 🟡 Avanzado | Jenkins, SonarQube, registry, Gitleaks y Trivy operan; las siete pipelines están homologadas y las corridas finales están en ejecución. |
-| Entrega | 🟡 Parcial | Infraestructura y guías operativas existen; faltan seeds, validación limpia y ZIP final. |
+| DevOps | ✅ Completa | Las siete pipelines normales y las siete ejecuciones con E2E terminaron en `SUCCESS`; Quality Gate, Gitleaks, Trivy, registry y reportes operan. |
+| Entrega | 🟡 Avanzada | Infraestructura, guías y validación limpia existen; faltan seeds y empaquetado ZIP final. |
 
 ## 1. Funcionalidad
 
@@ -29,10 +29,11 @@
 - ✅ RabbitMQ con envelopes, consumidores idempotentes y eventos `vacaciones.iniciadas` / `vacaciones.finalizadas`.
 - ✅ Plantillas HTML corporativas externas, caché, timeout, reintentos y circuit breaker de Departamentos.
 - ✅ E2E repetido el **2026-11-08** sobre el stack persistido: **31 escenarios, 31 exitosos, 0 fallos y 222 pasos exitosos**.
+- ✅ E2E repetido el **2026-11-09** en Jenkins sobre stacks efímeros y limpios, con Secrets aplicados: los siete jobs ejecutaron **31 escenarios y 222 pasos exitosos**.
 
 ### Pendiente funcional
 
-- [ ] Repetir los 31 E2E sobre un stack limpio con Secrets aplicados; es evidencia de configuración, no una brecha de negocio.
+- [x] Repetir los 31 E2E sobre un stack limpio con Secrets aplicados; validado en los siete jobs de Jenkins el 2026-11-09.
 - [ ] Opcional y no bloqueante: `GET /empleados/{id}/completo` con degradación si Perfiles falla.
 
 ## 2. Calidad técnica y contratos
@@ -118,11 +119,12 @@ Pendiente:
 - ✅ Jenkins `:8090`; Prometheus `:9090`.
 - ✅ Los siete repositorios tienen `Jenkinsfile`; los jobs JCasC apuntan a la misma rama y ejecutan checkout, compilación/lint según lenguaje, pruebas, Gitleaks, SonarQube, Quality Gate, imagen y publicación en registry.
 - ✅ Empleados y Vacaciones además publican reportes de cobertura y ejecutan la suite E2E aislada.
+- ✅ Los stages E2E usan un bloqueo global (`rhm-e2e-stack`): las compilaciones pueden avanzar en paralelo, pero cada stack funcional se valida de forma aislada y sin depender del orden de los servicios.
 
 Pendiente:
 
 - ✅ Las siete pipelines publican JUnit/cobertura e incluyen una fase E2E aislada, opcional mediante `RUN_E2E`.
-- [ ] Ejecutar y conservar evidencia de una corrida normal y otra con `RUN_E2E` en Jenkins para cada variante de pipeline.
+- [x] Ejecutar y conservar evidencia de una corrida normal y otra con `RUN_E2E` en Jenkins para cada variante de pipeline; detalle en `docs/evidencias/devops-e2e-2026-11-09.md`.
 - ✅ Escaneo de dependencias e imágenes con Trivy además de Gitleaks; webhook de Sonar y polling SCM documentados.
 
 ## 7. Documentación y entrega
@@ -132,7 +134,7 @@ Pendiente:
 
 Pendiente:
 
-- [ ] Validar arranque limpio con Secrets y repetir E2E.
+- [x] Validar arranque limpio con Secrets y repetir E2E; siete pipelines `SUCCESS` el 2026-11-09.
 - [ ] Directorio/ZIP de entrega con Compose en su raíz, sin Git adicional ni duplicar código.
 - [ ] `scripts/seed-data.sql` y guía de migraciones.
 - ✅ Guías de arranque/validación, CI/CD, observabilidad y seguridad/rotación disponibles en `docs/guias/`.
@@ -141,6 +143,6 @@ Pendiente:
 
 ## Prioridad de cierre
 
-1. Ejecutar las siete pipelines en Jenkins y guardar evidencia de Quality Gate, cobertura y E2E.
-2. Redes y seeds.
-3. Empaquetado final sin datos sensibles.
+1. Redes y seeds.
+2. Empaquetado final sin datos sensibles.
+3. Mejoras opcionales no bloqueantes: endpoint agregado Empleados/Perfiles y Keycloak/OIDC.
