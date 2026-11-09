@@ -30,3 +30,4 @@ htmlpublisher
 # --- Utilidades de pipeline ---
 timestamper
 ws-cleanup
+lockable-resources
