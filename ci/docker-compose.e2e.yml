@@ -62,6 +62,11 @@ services:
     # .erlang.cookie con un uid distinto y RabbitMQ termina con EACCES al reiniciar.
     volumes: !override
       - e2e-secret-files:/run/secrets:ro
+    # La imagen declara /var/lib/rabbitmq como VOLUME; sin un montaje explícito
+    # Docker crea un volumen anónimo que puede sembrar .erlang.cookie como root.
+    # El tmpfs garantiza estado nuevo y propietario rabbitmq (uid 100, gid 101).
+    tmpfs:
+      - /var/lib/rabbitmq:mode=0700,uid=100,gid=101
     # El stack E2E usa credenciales efímeras. Arrancar RabbitMQ directamente evita
     # que una carrera del montaje de secretos detenga todo el stack antes del healthcheck.
     command: ["rabbitmq-server"]
