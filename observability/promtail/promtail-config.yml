@@ -1,0 +1,40 @@
+# Promtail (Reto 8): agente que descubre los contenedores por el socket de Docker y envía sus logs
+# a Loki (modelo PUSH). No hace falta montar /var/lib/docker: lee los logs por la API de Docker,
+# así que funciona igual en Linux y en Docker Desktop.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        # Solo el proyecto Compose del sistema RHM (no los stacks E2E de Jenkins ni otros proyectos
+        # del equipo que corran en la misma máquina).
+        filters:
+          - name: label
+            values: ['com.docker.compose.project=${COMPOSE_PROJECT_NAME}']
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service'
+    pipeline_stages:
+      # Todos los microservicios escriben una línea JSON por evento (timestamp, level, service,
+      # traceId, message). El nivel se vuelve etiqueta para filtrar barato ({level="ERROR"}); el
+      # traceId queda como campo del log (no como etiqueta: un valor por petición dispararía la
+      # cardinalidad de Loki) y Grafana lo convierte en enlace a la traza de Zipkin.
+      - json:
+          expressions:
+            level: level
+      - labels:
+          level:

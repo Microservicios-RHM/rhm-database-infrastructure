@@ -1,0 +1,40 @@
+# Fuentes de datos de Grafana aprovisionadas como código (Reto 8): se crean solas al levantar el
+# contenedor, sin configuración manual. Todas las URLs usan nombres de red Docker.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      # Correlación log → traza: el campo traceId de cada log JSON se vuelve un enlace que abre
+      # la traza completa en la fuente Zipkin.
+      derivedFields:
+        - name: traceId
+          matcherType: regex
+          # \s* porque el JSON de Python (notificaciones) lleva un espacio tras los dos puntos.
+          matcherRegex: '"traceId":\s*"(\w+)"'
+          url: '$${__value.raw}'
+          datasourceUid: zipkin
+          urlDisplayLabel: 'Ver traza en Zipkin'
+
+  - name: Zipkin
+    uid: zipkin
+    type: zipkin
+    access: proxy
+    url: http://zipkin:9411
+    editable: false

@@ -1,0 +1,131 @@
+# Reglas de alerta de Grafana (Reto 8), aprovisionadas como código. Cada regla evalúa una consulta
+# PromQL cada 30 s y, si la condición se sostiene durante `for`, notifica por la política de
+# policies.yml. Las reglas son multidimensionales: una instancia de alerta por servicio (job).
+#
+# Umbrales derivados de los objetivos del enunciado (SLO): servicio caído 1 min, errores 5xx > 10 %
+# durante 2 min, latencia promedio > 2 s durante 2 min.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: rhm-microservicios
+    folder: RHM
+    interval: 30s
+    rules:
+      - uid: rhm-servicio-caido
+        title: Servicio caído
+        condition: C
+        for: 1m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ $labels.job }} dejó de responder al scraping de Prometheus'
+          description: >-
+            up{job="{{ $labels.job }}"} == 0 durante más de 1 minuto. Revisar `docker compose ps`
+            y los logs del servicio en Grafana (Loki).
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              refId: A
+              expr: up{job!="prometheus"}
+              instant: true
+              range: false
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+
+      - uid: rhm-alta-tasa-errores
+        title: Alta tasa de errores 5xx
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ $labels.job }} responde 5xx en más del 10 % de las peticiones'
+          description: 'Porcentaje de respuestas 5xx en el último minuto: {{ printf "%.1f" $values.B.Value }} %.'
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              refId: A
+              expr: >-
+                100 * sum by (job) (rate(http_requests_total{status=~"5..",route!="/health"}[1m]))
+                / sum by (job) (rate(http_requests_total{route!="/health"}[1m]))
+              instant: true
+              range: false
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              settings: { mode: dropNN }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [10] }
+
+      - uid: rhm-alta-latencia
+        title: Alta latencia
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.job }} tarda en promedio más de 2 s en responder'
+          description: >-
+            Latencia promedio del último minuto: {{ printf "%.2f" $values.B.Value }} s. Abrir Zipkin
+            y ordenar las trazas por duración para ver qué span se lleva el tiempo.
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: { from: 300, to: 0 }
+            model:
+              refId: A
+              expr: >-
+                sum by (job) (rate(http_request_duration_seconds_sum{route!="/health"}[1m]))
+                / sum by (job) (rate(http_request_duration_seconds_count{route!="/health"}[1m]))
+              instant: true
+              range: false
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              settings: { mode: dropNN }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [2] }

@@ -1,0 +1,45 @@
+# Loki (Reto 8): almacenamiento de logs en modo monolítico (un solo proceso), suficiente para el
+# entorno local. Indexa solo las etiquetas (service, container, level); el contenido de cada línea
+# se guarda comprimido y se filtra al consultar con LogQL.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # Retención de 7 días: los logs de desarrollo no necesitan más y el volumen no crece sin límite.
+  retention_period: 168h
+  allow_structured_metadata: true
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false

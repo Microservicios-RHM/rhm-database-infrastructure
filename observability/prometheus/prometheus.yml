@@ -1,0 +1,60 @@
+# Prometheus (Reto 8): recolector de métricas con modelo PULL. Cada 15 s hace GET /metrics a cada
+# microservicio por su nombre de red Docker (microservices-network), nunca por IP: los contenedores
+# cambian de IP al recrearse, el nombre del servicio no.
+#
+# Un scrape_job por servicio (7 en total). Si un servicio no responde, la serie up{job="..."} pasa a
+# 0: es lo que pinta de rojo el panel de estado de Grafana y dispara la alerta "Servicio caído".
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # El API Gateway va primero: es el punto de entrada único, así que su latencia y su tasa de error
+  # son la vista del sistema desde el cliente. Node.js + prom-client.
+  - job_name: 'api-gateway'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['api-gateway:8080']
+
+  # Node.js (Express) + prom-client
+  - job_name: 'empleados-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['empleados-service:8080']
+
+  # PHP 8.3 (Apache) + promphp/prometheus_client_php (contadores en APCu). Apache escucha en el 80.
+  - job_name: 'departamentos-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['departamentos-service:80']
+
+  # Node.js (Express) + prom-client
+  - job_name: 'auth-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['auth-service:8080']
+
+  # Go (net/http) + prometheus/client_golang
+  - job_name: 'perfiles-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['perfiles-service:8080']
+
+  # Python (FastAPI) + prometheus_client
+  - job_name: 'notificaciones-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['notificaciones-service:8080']
+
+  # Ruby (Sinatra) + prometheus-client (client_ruby)
+  - job_name: 'vacaciones-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['vacaciones-service:8080']
+
+  # El propio Prometheus (útil para ver si el scraping se está atrasando).
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

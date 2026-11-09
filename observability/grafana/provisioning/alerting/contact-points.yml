@@ -1,0 +1,19 @@
+# Canal de notificación de las alertas (Reto 8): correo electrónico vía SMTP.
+#
+# En el entorno local el SMTP es MailHog (el mismo que ya usa notificaciones-service): Grafana envía
+# el correo a mailhog:1025 y se lee en http://localhost:8025. Para un buzón real basta cambiar las
+# variables GF_SMTP_* del servicio grafana en docker-compose.yml (p. ej. smtp.gmail.com:587 con
+# una contraseña de aplicación) y ALERT_EMAIL_TO en .env; este archivo no cambia.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: email-soporte-rhm
+    receivers:
+      - uid: email-soporte-rhm
+        type: email
+        disableResolveMessage: false
+        settings:
+          addresses: ${ALERT_EMAIL_TO}
+          singleEmail: true
+          subject: '[RHM] {{ .Status | toUpper }}: {{ .CommonLabels.alertname }}'
