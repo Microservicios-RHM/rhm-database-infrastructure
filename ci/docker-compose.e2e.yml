@@ -38,7 +38,10 @@ services:
     container_name: !reset null
     ports: !reset []
     secrets: !reset []
-    volumes: [e2e-secret-files:/run/secrets:ro]
+    # No se mezcla broker-data del Compose base: una ejecución anterior puede dejar
+    # .erlang.cookie con un uid distinto y RabbitMQ termina con EACCES al reiniciar.
+    volumes: !override
+      - e2e-secret-files:/run/secrets:ro
     # El stack E2E usa credenciales efímeras. Arrancar RabbitMQ directamente evita
     # que una carrera del montaje de secretos detenga todo el stack antes del healthcheck.
     command: ["rabbitmq-server"]
@@ -80,7 +83,13 @@ services:
     volumes: [e2e-secret-files:/run/secrets:ro]
   departamentos-service:  { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
   notificaciones-service: { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
-  perfiles-service:       { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  perfiles-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    # El Compose de desarrollo usa dos réplicas; una es suficiente para contratos E2E
+    # y evita duplicar consumo de recursos en los ejecutores de Jenkins.
+    deploy: { replicas: 1 }
   vacaciones-service:     { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
   auth-service:           { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
   api-gateway:
