@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ejemplos truncados y bootstrap local de SonarQube; no son secretos operativos"
+regexes = [
+  '''^eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.\.\.$''',
+  '''^admin:admin$''',
+  '''^sonar$''',
+]
+paths = ['''^\.env\.example$''']

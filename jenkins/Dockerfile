@@ -17,9 +17,13 @@ COPY --from=docker:29-cli /usr/local/libexec/docker/cli-plugins /usr/local/libex
 # Configuración como código: usuario administrador, credenciales, servidor SonarQube y jobs.
 # Vive fuera de JENKINS_HOME para que un rebuild de la imagen la actualice aunque el volumen persista.
 COPY casc.yaml /usr/share/jenkins/casc/jenkins.yaml
+COPY --chown=jenkins:jenkins secret-entrypoint.sh /usr/local/bin/rhm-jenkins-entrypoint
+RUN chmod 0555 /usr/local/bin/rhm-jenkins-entrypoint
 ENV CASC_JENKINS_CONFIG=/usr/share/jenkins/casc/jenkins.yaml
 
 # Jenkins corre siempre como el usuario sin privilegios `jenkins` (uid 1000). El acceso al socket
 # Docker del host no requiere root: docker-compose.yml agrega el GID del socket con `group_add`
 # (variable DOCKER_GID del .env, que cambia entre máquinas).
 USER jenkins
+
+ENTRYPOINT ["/usr/local/bin/rhm-jenkins-entrypoint"]

@@ -10,7 +10,7 @@
 |---|---|---|
 | Funcionalidad | ✅ Completa | Suite E2E: 31 escenarios, 31 exitosos, 0 fallos y 0 errores. |
 | Calidad | ✅ Completa | Siete pipelines y Quality Gates verdes, cobertura ≥70 %, contratos versionados y contenedores sin root. |
-| Seguridad | 🟡 En migración | Los siete servicios soportan Compose Secrets; falta aplicarlos sobre BDs persistidas y herramientas CI. |
+| Seguridad | ✅ Completa | Secretos aplicados sobre datos persistidos y CI, Gitleaks limpio y credenciales AMQP protegidas en logs. |
 | Observabilidad | 🟡 Base desplegada | Grafana, Loki, Prometheus y Jaeger están arriba; faltan métricas, trazas y alertas homogéneas. |
 | Escalabilidad | ✅ Base implementada | Nginx, dos réplicas stateless, caché y circuit breaker. |
 | DevOps | 🟡 Avanzado | Jenkins, SonarQube y registry operan; las siete pipelines están homologadas y falta conservar evidencia de una corrida completa en Jenkins. |
@@ -88,13 +88,13 @@ Implementado:
 - ✅ Compose monta secretos de BD, RabbitMQ, JWT, administrador semilla y token de caché.
 - ✅ Credenciales locales de plataforma: `admin / rhmUQ` para RabbitMQ, administrador semilla, Grafana, Jenkins y SonarQube; no se reutilizan en BD.
 - ✅ La cuenta ADMIN de la base persistida fue reconciliada con `secrets/admin_password` y validada con los 31 E2E el 2026-11-08, sin eliminar datos.
+- ✅ Roles de las seis bases PostgreSQL y usuarios MySQL de Departamentos rotados sin eliminar volúmenes; stack completo recreado y saludable.
+- ✅ Jenkins, SonarQube, `sonar-init` y `sonar-db` consumen Compose Secrets sin contraseñas sensibles por defecto.
+- ✅ Gitleaks limpio en los nueve historiales y en los escaneos explícitos de Compose/Postman; evidencia en `docs/evidencias/seguridad-2026-11-08.md`.
+- ✅ Los errores AMQP se sanitizan y la URL completa del broker no aparece en los logs del stack.
 
-Pendiente:
+Mejora opcional no bloqueante:
 
-- [ ] Rotar usuarios de BD persistidos o levantar stack limpio antes de reiniciar con los nuevos secretos. No borrar volúmenes sin autorización.
-- [ ] Conectar Jenkins y SonarQube a secretos de ejecución y eliminar defaults sensibles restantes.
-- [ ] Ejecutar Gitleaks en nueve historiales, Compose y colección Postman; guardar evidencia.
-- [ ] Evitar que la URL AMQP con credenciales llegue a logs.
 - [ ] Opcional: Keycloak/OIDC con JWKS.
 
 ## 5. Escalabilidad y resiliencia
@@ -141,8 +141,7 @@ Pendiente:
 
 ## Prioridad de cierre
 
-1. Aplicar/validar Secrets sobre stack limpio, repetir E2E y ejecutar Gitleaks.
-2. Cerrar métricas, logs, trazabilidad AMQP y alertas.
-3. Ejecutar las siete pipelines en Jenkins y guardar evidencia de Quality Gate, cobertura y E2E.
-4. Redes y seeds.
-5. Empaquetado final sin datos sensibles.
+1. Cerrar métricas, logs, trazabilidad AMQP y alertas.
+2. Ejecutar las siete pipelines en Jenkins y guardar evidencia de Quality Gate, cobertura y E2E.
+3. Redes y seeds.
+4. Empaquetado final sin datos sensibles.
