@@ -30,10 +30,20 @@ services:
   promtail:    { profiles: [ci-infra] }
   prometheus:  { profiles: [ci-infra] }
   alertmanager: { profiles: [ci-infra] }
-  jaeger:      { profiles: [ci-infra] }
+  # departamentos-service usa un exportador síncrono propio y no honra
+  # OTEL_SDK_DISABLED. Un colector liviano evita que cada respuesta espere los
+  # reintentos hacia un host inexistente (incluido su healthcheck).
+  jaeger:
+    image: jaegertracing/all-in-one:1.65.0
+    ports: !reset []
+    environment: { COLLECTOR_OTLP_ENABLED: "true" }
+    networks: [microservices-network]
   grafana:     { profiles: [ci-infra] }
 
   # --- Sistema bajo prueba ------------------------------------------------------------------------
+  edge:
+    container_name: !reset null
+    ports: !reset []
   message-broker:
     container_name: !reset null
     ports: !reset []
@@ -81,22 +91,47 @@ services:
     image: ${COMPOSE_PROJECT_NAME:?}-empleados-service
     secrets: !reset []
     volumes: [e2e-secret-files:/run/secrets:ro]
-  departamentos-service:  { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
-  notificaciones-service: { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+    environment: { OTEL_SDK_DISABLED: "true" }
+    deploy: { replicas: 1 }
+  departamentos-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    # Jaeger queda fuera del stack funcional. Desactivar el SDK evita que el
+    # exportador síncrono prolongue /health hasta agotar el timeout de Docker.
+    environment: { OTEL_SDK_DISABLED: "true" }
+    deploy: { replicas: 1 }
+  notificaciones-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
   perfiles-service:
     container_name: !reset null
     secrets: !reset []
     volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
     # El Compose de desarrollo usa dos réplicas; una es suficiente para contratos E2E
     # y evita duplicar consumo de recursos en los ejecutores de Jenkins.
     deploy: { replicas: 1 }
-  vacaciones-service:     { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
-  auth-service:           { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  vacaciones-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+  auth-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+    deploy: { replicas: 1 }
   api-gateway:
     container_name: !reset null
     ports: !reset []
     secrets: !reset []
     volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+    deploy: { replicas: 1 }
 
 volumes:
   employees-db-data:     { name: "${COMPOSE_PROJECT_NAME:?}-employees-db-data" }
