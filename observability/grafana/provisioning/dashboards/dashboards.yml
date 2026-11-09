@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: RHM
+    folder: RHM
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

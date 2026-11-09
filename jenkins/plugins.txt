@@ -6,6 +6,7 @@ workflow-aggregator
 pipeline-stage-view
 pipeline-graph-view
 git
+git-parameter
 configuration-as-code
 job-dsl
 
@@ -29,3 +30,4 @@ htmlpublisher
 # --- Utilidades de pipeline ---
 timestamper
 ws-cleanup
+lockable-resources

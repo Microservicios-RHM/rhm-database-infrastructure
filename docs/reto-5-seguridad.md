@@ -51,7 +51,7 @@ primer empleado: todos los endpoints de escritura exigen rol `ADMIN`.
 ```bash
 curl -s -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"change_admin_password"}'
+  -d '{"username":"admin","password":"rhmUQ"}'
 ```
 
 ```json

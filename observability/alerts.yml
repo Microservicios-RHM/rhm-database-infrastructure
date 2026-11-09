@@ -1,0 +1,39 @@
+groups:
+  - name: rhm-platform
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Service {{ $labels.job }} is unavailable"
+      - alert: HighServerErrorRate
+        expr: sum(rate(rhm_http_requests_total{status=~"5.."}[5m])) by (service) > 0.1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "High 5xx rate in {{ $labels.service }}"
+      - alert: DepartmentCircuitBreakerOpen
+        expr: rhm_departments_circuit_breaker_open == 1
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Department circuit breaker is open"
+      - alert: RabbitMqQueueBacklog
+        expr: sum(rabbitmq_queue_messages_ready) by (queue) > 50
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "RabbitMQ queue {{ $labels.queue }} has more than 50 ready messages"
+      - alert: EventProcessingFailures
+        expr: sum(increase(rhm_events_total{outcome=~"failed|malformed"}[5m])) by (service, event_type) > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Event processing failures in {{ $labels.service }} for {{ $labels.event_type }}"
+      - alert: HighHttpLatency
+        expr: sum(rate(rhm_http_request_duration_seconds_sum[5m])) by (service) / clamp_min(sum(rate(rhm_http_requests_total[5m])) by (service), 0.001) > 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Average HTTP latency over one second in {{ $labels.service }}"

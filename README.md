@@ -1,5 +1,22 @@
 # Plataforma RHM — infraestructura
 
+Este es el repositorio de infraestructura y orquestación de la plataforma. Los microservicios se
+mantienen en repositorios Git independientes; este repositorio solo concentra el Compose, el borde
+Nginx, observabilidad, CI, scripts y documentación transversal.
+
+Ejecute el stack desde aquí:
+
+```bash
+cp .env.example .env
+./scripts/setup-secrets.sh
+docker compose up --build -d --wait
+```
+
+La entrada pública es `http://localhost:8080` a través de `edge` (Nginx); el contenedor
+`api-gateway` no publica puertos directamente. La configuración de Grafana usa el secreto local
+`secrets/grafana_admin_password`. Los demás secretos todavía conservan la configuración heredada
+por variables de entorno y se migrarán progresivamente; nunca versionar `secrets/` ni `.env`.
+
 Este repositorio contiene el único `docker-compose.yml` del sistema. Levanta el API Gateway, los
 microservicios y sus bases de datos aisladas con un solo comando.
 
@@ -25,6 +42,7 @@ microservicios y sus bases de datos aisladas con un solo comando.
 | `sonar-db` | PostgreSQL 17 | interno 5432 (sin publicar) | `sonar-db-data` |
 | `sonar-init` | one-shot (curl) que aprovisiona SonarQube | — | `sonar-token` |
 | `registry` (`docker-registry`) | Docker Registry 2 — Reto 7 | 5000 | `registry-data` |
+| `registry-ui` | Interfaz web del Registry | 5080 (solo localhost) | `registry` |
 
 La única entrada HTTP publicada para los microservicios es `http://localhost:8080`, servida por el
 Gateway. Dentro de Docker, el Gateway enruta `/empleados/*` a `empleados-service:8080`,
@@ -138,7 +156,8 @@ Health Gateway:  http://localhost:8080/health
 RabbitMQ (UI):   http://localhost:15672
 Jenkins (CI):    http://localhost:9090   (ver "Integración continua", Reto 7)
 SonarQube:       http://localhost:9000
-Registry:        http://localhost:5000/v2/_catalog
+Registry API:    http://localhost:5000/v2/_catalog
+Registry UI:     http://localhost:5080
 ```
 
 Ningún microservicio ni base de datos publica su puerto HTTP directamente al host — todos son
@@ -319,7 +338,7 @@ cuando terminan y la da de baja cuando lo retiran.
 Para obtener un token de prueba:
 
 ```bash
-curl -s -X POST http://localhost:8080/auth/login   -H "Content-Type: application/json"   -d '{"username":"admin","password":"change_admin_password"}'
+curl -s -X POST http://localhost:8080/auth/login   -H "Content-Type: application/json"   -d '{"username":"admin","password":"rhmUQ"}'
 ```
 
 Esa cuenta administradora se crea sola al arrancar. Sin ella nadie podría crear el primer empleado,
@@ -361,8 +380,8 @@ git push ─▶ Jenkins (pollSCM) ─▶ Checkout ─▶ Build ─▶ Test ─�
 
 | Herramienta | URL | Usuario | Contraseña (por defecto, ver `.env`) |
 |---|---|---|---|
-| Jenkins | http://localhost:9090 | `admin` (`JENKINS_ADMIN_USER`) | `change_jenkins_password` (`JENKINS_ADMIN_PASSWORD`) |
-| SonarQube | http://localhost:9000 | `admin` | `Rhm-Sonar-2026` (`SONAR_ADMIN_PASSWORD`; `admin/admin` se reemplaza solo) |
+| Jenkins | http://localhost:8090 | `admin` | `rhmUQ` |
+| SonarQube | http://localhost:9000 | `admin` | `rhmUQ` (`admin/admin` se reemplaza solo) |
 | Registry | http://localhost:5000/v2/_catalog | — | — |
 
 Las URLs se configuran en `.env`; sin definirlas se usan los valores de la tabla:

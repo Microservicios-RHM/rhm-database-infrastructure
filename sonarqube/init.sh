@@ -13,9 +13,11 @@
 set -eu
 
 SONAR_URL=${SONAR_URL:-http://sonarqube:9000}
-ADMIN_PASSWORD=${SONAR_ADMIN_PASSWORD:?Defina SONAR_ADMIN_PASSWORD}
+ADMIN_PASSWORD_FILE=${SONAR_ADMIN_PASSWORD_FILE:-/run/secrets/sonar_admin_password}
+[ -s "$ADMIN_PASSWORD_FILE" ] || { echo "Falta el secreto $ADMIN_PASSWORD_FILE" >&2; exit 1; }
+ADMIN_PASSWORD=$(cat "$ADMIN_PASSWORD_FILE")
 QUALITY_GATE=${SONAR_QUALITY_GATE:-RHM}
-PROJECTS=${SONAR_PROJECTS:-"ms-employees ms-vacation"}
+PROJECTS=${SONAR_PROJECTS:-"api-gateway auth-service ms-departments ms-employees ms-notifications ms-profiles ms-vacation"}
 PUBLIC_URL=${SONAR_PUBLIC_URL:-http://localhost:9000}
 WEBHOOK_URL=${SONAR_WEBHOOK_URL:-http://jenkins:8080/sonarqube-webhook/}
 TOKEN_NAME=${SONAR_TOKEN_NAME:-jenkins-ci}

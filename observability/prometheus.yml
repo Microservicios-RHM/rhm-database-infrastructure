@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+rule_files:
+  - /etc/prometheus/alerts.yml
+scrape_configs:
+  - job_name: api-gateway
+    static_configs: [{ targets: ["api-gateway:8080"] }]
+  - job_name: empleados
+    static_configs: [{ targets: ["empleados-service:8080"] }]
+  - job_name: departamentos
+    static_configs: [{ targets: ["departamentos-service:80"] }]
+  - job_name: auth
+    static_configs: [{ targets: ["auth-service:8080"] }]
+  - job_name: notificaciones
+    static_configs: [{ targets: ["notificaciones-service:8080"] }]
+  - job_name: perfiles
+    static_configs: [{ targets: ["perfiles-service:8080"] }]
+  - job_name: vacaciones
+    static_configs: [{ targets: ["vacaciones-service:8080"] }]
+  - job_name: rabbitmq
+    static_configs: [{ targets: ["message-broker:15692"] }]

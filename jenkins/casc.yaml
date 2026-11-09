@@ -98,17 +98,37 @@ jobs:
   - script: |
       [
         'ms-employees': 'empleados-service: Node.js 24 + TypeScript',
+        'api-gateway' : 'api-gateway: Node.js 24 + TypeScript',
+        'auth-service': 'auth-service: Node.js 24 + TypeScript',
+        'ms-departments': 'departamentos-service: PHP 8.3',
+        'ms-notifications': 'notificaciones-service: Python 3.13',
+        'ms-profiles' : 'perfiles-service: Go 1.26',
         'ms-vacation' : 'vacaciones-service: Ruby 3.4 + Sinatra',
       ].each { repo, descripcion ->
         pipelineJob(repo) {
           description('CI de ' + repo + ' (' + descripcion + '). Definido en el Jenkinsfile del repositorio.')
           logRotator { numToKeep(30) }
+          parameters {
+            gitParameter {
+              name('BRANCH')
+              description('Rama remota que se construirá.')
+              type('PT_BRANCH')
+              defaultValue('chore/project-finalization')
+              branch('')
+              branchFilter('origin/(.*)')
+              tagFilter('*')
+              sortMode('DESCENDING_SMART')
+              selectedValue('DEFAULT')
+              useRepository('.*/' + repo + '\\.git')
+              quickFilterEnabled(true)
+            }
+          }
           definition {
             cpsScm {
               scm {
                 git {
                   remote { url('${RHM_GIT_BASE_URL}/' + repo + '.git') }
-                  branches('*/${RHM_GIT_BRANCH}')
+                  branches('*/' + '$' + '{BRANCH}')
                 }
               }
               scriptPath('Jenkinsfile')

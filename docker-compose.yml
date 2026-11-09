@@ -1,30 +1,48 @@
 name: rhm-platform
 
+include:
+  - path: ./observability/docker-compose.yml
+
 services:
+  edge:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_HOST_PORT:-8080}:8080"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - microservices-network
+
   message-broker:
     image: rabbitmq:4-management-alpine
-    container_name: message-broker
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${BROKER_USER:-admin}
-      RABBITMQ_DEFAULT_PASS: ${BROKER_PASSWORD:-admin}
+      BROKER_PASSWORD_FILE: /run/secrets/broker_password
+    command: ["sh", "/bootstrap/rabbitmq-secrets.sh"]
+    secrets:
+      - broker_password
     ports:
       - "127.0.0.1:${BROKER_AMQP_HOST_PORT:-5672}:5672"
       - "127.0.0.1:${BROKER_UI_HOST_PORT:-15672}:15672"
     volumes:
       - broker-data:/var/lib/rabbitmq
+      - ./scripts/rabbitmq-secrets.sh:/bootstrap/rabbitmq-secrets.sh:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 20s
+      retries: 15
+      start_period: 45s
     networks:
       - microservices-network
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
-    container_name: mailhog
     restart: unless-stopped
     ports:
       - "127.0.0.1:${MAILHOG_UI_HOST_PORT:-8025}:8025"
@@ -33,12 +51,13 @@ services:
 
   database-empleados:
     image: postgres:17-alpine
-    container_name: database-empleados
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_EMPLOYEES_NAME:-employees_db}
       POSTGRES_USER: ${DB_EMPLOYEES_USER:-employees_service}
-      POSTGRES_PASSWORD: ${DB_EMPLOYEES_PASSWORD:-employees_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/employees_db_password
+    secrets:
+      - employees_db_password
     volumes:
       - employees-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -51,7 +70,6 @@ services:
       - microservices-network
 
   empleados-service:
-    container_name: empleados-service
     image: servidor-empleados
     build:
       context: ../ms-employees
@@ -62,12 +80,13 @@ services:
       LOG_LEVEL: ${EMPLOYEES_LOG_LEVEL:-info}
       LOG_PRETTY: "false"
       PORT: 8080
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       DB_HOST: database-empleados
       DB_PORT: 5432
       DB_NAME: ${DB_EMPLOYEES_NAME:-employees_db}
       DB_SCHEMA: employees
       DB_USER: ${DB_EMPLOYEES_USER:-employees_service}
-      DB_PASSWORD: ${DB_EMPLOYEES_PASSWORD:-employees_local_password}
+      DB_PASSWORD_FILE: /run/secrets/employees_db_password
       DB_SSL: "false"
       DB_POOL_MAX: 10
       DB_CONNECT_MAX_ATTEMPTS: 5
@@ -79,12 +98,19 @@ services:
       DEPARTMENTS_TOTAL_TIMEOUT_MS: 9000
       DEPARTMENTS_CIRCUIT_BREAKER_THRESHOLD: 3
       DEPARTMENTS_CIRCUIT_BREAKER_RESET_TIMEOUT_MS: 30000
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
+      BROKER_QUEUE: empleados.queue
       DEPARTMENTS_CACHE_TTL_SECONDS: 300
-      CACHE_ADMIN_TOKEN: ${CACHE_ADMIN_TOKEN:-change_this_cache_admin_token}
+      CACHE_ADMIN_TOKEN_FILE: /run/secrets/cache_admin_token
+    secrets:
+      - employees_db_password
+      - broker_url
+      - cache_admin_token
     expose:
       - "8080"
+    deploy:
+      replicas: 2
     depends_on:
       database-empleados:
         condition: service_healthy
@@ -103,14 +129,16 @@ services:
 
   database-departamentos:
     image: mysql:8.4
-    container_name: database-departamentos
     restart: unless-stopped
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_DEPARTMENTS_ROOT_PASSWORD:-departments_root_password}
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/departments_db_root_password
       MYSQL_DATABASE: ${DB_DEPARTMENTS_NAME:-departments_db}
       MYSQL_USER: ${DB_DEPARTMENTS_USER:-departments_service}
-      MYSQL_PASSWORD: ${DB_DEPARTMENTS_PASSWORD:-departments_local_password}
+      MYSQL_PASSWORD_FILE: /run/secrets/departments_db_password
+    secrets:
+      - departments_db_root_password
+      - departments_db_password
     volumes:
       - departments-db-data:/var/lib/mysql
       - ../ms-departments/database/init:/docker-entrypoint-initdb.d:ro
@@ -124,21 +152,25 @@ services:
       - microservices-network
 
   departamentos-service:
-    container_name: departamentos-service
     build:
       context: ../ms-departments
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       APP_ENV: production
       DB_HOST: database-departamentos
       DB_PORT: 3306
       DB_NAME: ${DB_DEPARTMENTS_NAME:-departments_db}
       DB_USER: ${DB_DEPARTMENTS_USER:-departments_service}
-      DB_PASSWORD: ${DB_DEPARTMENTS_PASSWORD:-departments_local_password}
+      DB_PASSWORD_FILE: /run/secrets/departments_db_password
       DB_CHARSET: utf8mb4
+    secrets:
+      - departments_db_password
     expose:
       - "80"
+    deploy:
+      replicas: 2
     depends_on:
       database-departamentos:
         condition: service_healthy
@@ -153,12 +185,13 @@ services:
 
   database-notificaciones:
     image: postgres:17-alpine
-    container_name: database-notificaciones
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NOTIFICATIONS_NAME:-notifications_db}
       POSTGRES_USER: ${DB_NOTIFICATIONS_USER:-notifications_service}
-      POSTGRES_PASSWORD: ${DB_NOTIFICATIONS_PASSWORD:-notifications_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/notifications_db_password
+    secrets:
+      - notifications_db_password
     volumes:
       - notifications-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -171,26 +204,30 @@ services:
       - microservices-network
 
   notificaciones-service:
-    container_name: notificaciones-service
     build:
       context: ../ms-notifications
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_LEVEL: ${NOTIFICATIONS_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-notificaciones
       DB_PORT: 5432
       DB_NAME: ${DB_NOTIFICATIONS_NAME:-notifications_db}
       DB_USER: ${DB_NOTIFICATIONS_USER:-notifications_service}
-      DB_PASSWORD: ${DB_NOTIFICATIONS_PASSWORD:-notifications_local_password}
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      DB_PASSWORD_FILE: /run/secrets/notifications_db_password
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: notificaciones.queue
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_FROM: ${SMTP_FROM:-notificaciones@rhm.local}
       SMTP_USE_TLS: "false"
+      NOTIFICATION_TEMPLATE_DIR: /app/templates
+    secrets:
+      - notifications_db_password
+      - broker_url
     expose:
       - "8080"
     depends_on:
@@ -211,12 +248,13 @@ services:
 
   database-perfiles:
     image: postgres:17-alpine
-    container_name: database-perfiles
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_PROFILES_NAME:-profiles_db}
       POSTGRES_USER: ${DB_PROFILES_USER:-profiles_service}
-      POSTGRES_PASSWORD: ${DB_PROFILES_PASSWORD:-profiles_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/profiles_db_password
+    secrets:
+      - profiles_db_password
     volumes:
       - profiles-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -229,24 +267,29 @@ services:
       - microservices-network
 
   perfiles-service:
-    container_name: perfiles-service
     build:
       context: ../ms-profiles
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_LEVEL: ${PROFILES_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-perfiles
       DB_PORT: 5432
       DB_NAME: ${DB_PROFILES_NAME:-profiles_db}
       DB_USER: ${DB_PROFILES_USER:-profiles_service}
-      DB_PASSWORD: ${DB_PROFILES_PASSWORD:-profiles_local_password}
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      DB_PASSWORD_FILE: /run/secrets/profiles_db_password
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: perfiles.queue
+    secrets:
+      - profiles_db_password
+      - broker_url
     expose:
       - "8080"
+    deploy:
+      replicas: 2
     depends_on:
       database-perfiles:
         condition: service_healthy
@@ -263,12 +306,13 @@ services:
 
   database-vacaciones:
     image: postgres:17-alpine
-    container_name: database-vacaciones
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_VACATIONS_NAME:-vacations_db}
       POSTGRES_USER: ${DB_VACATIONS_USER:-vacations_service}
-      POSTGRES_PASSWORD: ${DB_VACATIONS_PASSWORD:-vacations_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/vacations_db_password
+    secrets:
+      - vacations_db_password
     volumes:
       - vacations-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -281,24 +325,27 @@ services:
       - microservices-network
 
   vacaciones-service:
-    container_name: vacaciones-service
     build:
       context: ../ms-vacation
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       LOG_LEVEL: ${VACATIONS_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-vacaciones
       DB_PORT: 5432
       DB_NAME: ${DB_VACATIONS_NAME:-vacations_db}
       DB_USER: ${DB_VACATIONS_USER:-vacations_service}
-      DB_PASSWORD: ${DB_VACATIONS_PASSWORD:-vacations_local_password}
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      DB_PASSWORD_FILE: /run/secrets/vacations_db_password
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: vacaciones.queue
       SCHEDULER_ENABLED: ${VACATIONS_SCHEDULER_ENABLED:-true}
       SCHEDULER_INTERVAL_SECONDS: ${VACATIONS_SCHEDULER_INTERVAL_SECONDS:-60}
+    secrets:
+      - vacations_db_password
+      - broker_url
     expose:
       - "8080"
     depends_on:
@@ -317,12 +364,13 @@ services:
 
   database-auth:
     image: postgres:17-alpine
-    container_name: database-auth
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_AUTH_NAME:-auth_db}
       POSTGRES_USER: ${DB_AUTH_USER:-auth_service}
-      POSTGRES_PASSWORD: ${DB_AUTH_PASSWORD:-auth_local_password}
+      POSTGRES_PASSWORD_FILE: /run/secrets/auth_db_password
+    secrets:
+      - auth_db_password
     volumes:
       - auth-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -335,7 +383,6 @@ services:
       - microservices-network
 
   auth-service:
-    container_name: auth-service
     build:
       context: ../auth-service
       dockerfile: Dockerfile
@@ -345,29 +392,37 @@ services:
       LOG_LEVEL: ${AUTH_LOG_LEVEL:-info}
       LOG_PRETTY: "false"
       PORT: 8080
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       DB_HOST: database-auth
       DB_PORT: 5432
       DB_NAME: ${DB_AUTH_NAME:-auth_db}
       DB_SCHEMA: auth
       DB_USER: ${DB_AUTH_USER:-auth_service}
-      DB_PASSWORD: ${DB_AUTH_PASSWORD:-auth_local_password}
+      DB_PASSWORD_FILE: /run/secrets/auth_db_password
       DB_SSL: "false"
       DB_POOL_MAX: 10
       DB_CONNECT_MAX_ATTEMPTS: 5
       DB_CONNECT_RETRY_DELAY_MS: 1000
-      JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret}
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
       JWT_ISSUER: ${JWT_ISSUER:-auth-service}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-3600}
       JWT_RESET_TTL_SECONDS: ${JWT_RESET_TTL_SECONDS:-900}
       ADMIN_EMPLOYEE_ID: ${ADMIN_EMPLOYEE_ID:-ADMIN}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@empresa.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_admin_password}
-      BROKER_URL: amqp://${BROKER_USER:-admin}:${BROKER_PASSWORD:-admin}@message-broker:5672
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      BROKER_URL_FILE: /run/secrets/broker_url
       BROKER_EXCHANGE: rhm.events
       BROKER_QUEUE: auth.queue
+    secrets:
+      - auth_db_password
+      - jwt_secret
+      - admin_password
+      - broker_url
     expose:
       - "8080"
+    deploy:
+      replicas: 2
     depends_on:
       database-auth:
         condition: service_healthy
@@ -383,7 +438,6 @@ services:
       - microservices-network
 
   api-gateway:
-    container_name: api-gateway
     build:
       context: ../api-gateway
       dockerfile: Dockerfile
@@ -391,16 +445,19 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8080
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://jaeger:4318/v1/traces
       EMPLEADOS_SERVICE_URL: http://empleados-service:8080
       DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:80
       NOTIFICACIONES_SERVICE_URL: http://notificaciones-service:8080
       PERFILES_SERVICE_URL: http://perfiles-service:8080
       VACACIONES_SERVICE_URL: http://vacaciones-service:8080
       AUTH_SERVICE_URL: http://auth-service:8080
-      JWT_SECRET: ${JWT_SECRET:-change_this_jwt_secret}
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
       JWT_ISSUER: ${JWT_ISSUER:-auth-service}
-    ports:
-      - "8080:8080"
+    secrets:
+      - jwt_secret
+    deploy:
+      replicas: 2
     depends_on:
       auth-service:
         condition: service_healthy
@@ -428,7 +485,6 @@ services:
   # ------------------------------------------------------------------------------------------------
 
   jenkins:
-    container_name: jenkins
     build:
       context: ./jenkins
       dockerfile: Dockerfile
@@ -442,8 +498,7 @@ services:
         -Djenkins.install.runSetupWizard=false
         -Dhudson.model.DirectoryBrowserSupport.CSP=
       JENKINS_ADMIN_USER: ${JENKINS_ADMIN_USER:-admin}
-      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-change_jenkins_password}
-      JENKINS_PUBLIC_URL: ${JENKINS_PUBLIC_URL:-http://localhost:${JENKINS_HOST_PORT:-9090}/}
+      JENKINS_PUBLIC_URL: ${JENKINS_PUBLIC_URL:-http://localhost:${JENKINS_HOST_PORT:-8090}/}
       # URL con la que Jenkins y sus agentes llegan a SonarQube (red Docker, no el navegador).
       SONAR_INTERNAL_URL: ${SONAR_INTERNAL_URL:-http://sonarqube:9000}
       # URL del API Gateway del stack efímero contra la que corre la suite BDD en la etapa E2E.
@@ -453,20 +508,22 @@ services:
       RHM_REGISTRY: ${RHM_REGISTRY:-localhost:${REGISTRY_HOST_PORT:-5000}}
       # Mismas credenciales del ADMIN semilla de auth-service: la etapa E2E las usa en su stack.
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change_admin_password}
       # Los Jenkinsfile lo pasan a los agentes Docker (--group-add) que también usan el socket.
       DOCKER_GID: ${DOCKER_GID:?Defina DOCKER_GID en .env (stat -c %g /var/run/docker.sock)}
     # Jenkins corre como `jenkins` (no root); este grupo le da acceso al socket Docker del host.
     group_add:
       - "${DOCKER_GID:?Defina DOCKER_GID en .env (stat -c %g /var/run/docker.sock)}"
     ports:
-      - "${JENKINS_HOST_PORT:-9090}:8080"   # interfaz web
+      - "${JENKINS_HOST_PORT:-8090}:8080"   # interfaz web
       - "127.0.0.1:50000:50000"             # agentes remotos (JNLP); no se usan por ahora
     volumes:
       - jenkins-data:/var/jenkins_home
       # Docker del host: los pipelines construyen imágenes y levantan el stack E2E con él.
       - /var/run/docker.sock:/var/run/docker.sock
       - sonar-token:/run/sonar:ro
+    secrets:
+      - jenkins_admin_password
+      - admin_password
     depends_on:
       sonar-init:
         condition: service_completed_successfully
@@ -481,12 +538,13 @@ services:
 
   sonar-db:
     image: postgres:17-alpine
-    container_name: sonar-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: sonar
       POSTGRES_USER: ${SONAR_DB_USER:-sonar}
-      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:-sonar}
+      POSTGRES_PASSWORD_FILE: /run/secrets/sonar_db_password
+    secrets:
+      - sonar_db_password
     volumes:
       - sonar-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -500,12 +558,10 @@ services:
 
   sonarqube:
     image: sonarqube:lts-community
-    container_name: sonarqube
     restart: unless-stopped
     environment:
       SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
       SONAR_JDBC_USERNAME: ${SONAR_DB_USER:-sonar}
-      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:-sonar}
       # Elasticsearch embebido sin mmap: evita exigir vm.max_map_count >= 262144 en el host.
       SONAR_SEARCH_JAVAADDITIONALOPTS: -Dnode.store.allow_mmap=false
     ports:
@@ -514,6 +570,12 @@ services:
       - sonarqube-data:/opt/sonarqube/data
       - sonarqube-logs:/opt/sonarqube/logs
       - sonarqube-extensions:/opt/sonarqube/extensions
+    secrets:
+      - sonar_db_password
+    entrypoint:
+      - sh
+      - -c
+      - 'export SONAR_JDBC_PASSWORD="$$(cat /run/secrets/sonar_db_password)"; exec /opt/sonarqube/docker/entrypoint.sh'
     depends_on:
       sonar-db:
         condition: service_healthy
@@ -530,11 +592,10 @@ services:
   # el webhook hacia Jenkins y el token de análisis. Termina y Jenkins arranca después.
   sonar-init:
     image: curlimages/curl:8.17.0
-    container_name: sonar-init
     user: root
     entrypoint: ["sh", "/init.sh"]
     environment:
-      SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:-Rhm-Sonar-2026}
+      SONAR_ADMIN_PASSWORD_FILE: /run/secrets/sonar_admin_password
       # Base de los enlaces al dashboard que Jenkins muestra en cada build (vistos desde el navegador).
       SONAR_PUBLIC_URL: ${SONAR_PUBLIC_URL:-http://localhost:${SONAR_HOST_PORT:-9000}}
       SONAR_URL: ${SONAR_INTERNAL_URL:-http://sonarqube:9000}
@@ -543,6 +604,8 @@ services:
     volumes:
       - ./sonarqube/init.sh:/init.sh:ro
       - sonar-token:/run/sonar
+    secrets:
+      - sonar_admin_password
     depends_on:
       sonarqube:
         condition: service_started
@@ -551,12 +614,27 @@ services:
 
   registry:
     image: registry:2
-    container_name: docker-registry
     restart: unless-stopped
     ports:
       - "${REGISTRY_HOST_PORT:-5000}:5000"
     volumes:
       - registry-data:/var/lib/registry
+    networks:
+      - microservices-network
+
+  registry-ui:
+    image: joxit/docker-registry-ui:2.5.7
+    restart: unless-stopped
+    environment:
+      SINGLE_REGISTRY: "true"
+      REGISTRY_TITLE: "RHM Container Registry"
+      NGINX_PROXY_PASS_URL: http://registry:5000
+      DELETE_IMAGES: "false"
+    ports:
+      - "127.0.0.1:${REGISTRY_UI_HOST_PORT:-5080}:80"
+    depends_on:
+      registry:
+        condition: service_started
     networks:
       - microservices-network
 
@@ -589,6 +667,23 @@ volumes:
     name: sonarqube-extensions
   registry-data:
     name: registry-data
+
+secrets:
+  broker_password: { file: ./secrets/broker_password }
+  broker_url: { file: ./secrets/broker_url }
+  jwt_secret: { file: ./secrets/jwt_secret }
+  cache_admin_token: { file: ./secrets/cache_admin_token }
+  admin_password: { file: ./secrets/admin_password }
+  employees_db_password: { file: ./secrets/employees_db_password }
+  departments_db_password: { file: ./secrets/departments_db_password }
+  departments_db_root_password: { file: ./secrets/departments_db_root_password }
+  notifications_db_password: { file: ./secrets/notifications_db_password }
+  profiles_db_password: { file: ./secrets/profiles_db_password }
+  vacations_db_password: { file: ./secrets/vacations_db_password }
+  auth_db_password: { file: ./secrets/auth_db_password }
+  jenkins_admin_password: { file: ./secrets/jenkins_admin_password }
+  sonar_admin_password: { file: ./secrets/sonar_admin_password }
+  sonar_db_password: { file: ./secrets/sonar_db_password }
 
 networks:
   microservices-network:

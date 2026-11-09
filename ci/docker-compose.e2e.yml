@@ -22,20 +22,68 @@ services:
   sonarqube:   { profiles: [ci-infra] }
   sonar-init:  { profiles: [ci-infra] }
   registry:    { profiles: [ci-infra] }
+  # La UI depende del registry; ambos se excluyen del stack efímero.
+  registry-ui: { profiles: [ci-infra] }
+  # El E2E valida contratos funcionales; observabilidad se valida en su propio
+  # flujo y no debe añadir secretos ni tiempos de arranque a cada pipeline.
+  loki:        { profiles: [ci-infra] }
+  promtail:    { profiles: [ci-infra] }
+  prometheus:  { profiles: [ci-infra] }
+  alertmanager: { profiles: [ci-infra] }
+  # departamentos-service usa un exportador síncrono propio y no honra
+  # OTEL_SDK_DISABLED. Un colector liviano evita que cada respuesta espere los
+  # reintentos hacia un host inexistente (incluido su healthcheck).
+  jaeger:
+    image: jaegertracing/all-in-one:1.65.0
+    ports: !reset []
+    environment: { COLLECTOR_OTLP_ENABLED: "true" }
+    networks: [microservices-network]
+  grafana:     { profiles: [ci-infra] }
 
   # --- Sistema bajo prueba ------------------------------------------------------------------------
-  message-broker:
+  edge:
     container_name: !reset null
     ports: !reset []
+    # El daemon Docker vive en el host y no puede resolver bind mounts del
+    # workspace interno de Jenkins. Empaquetar la configuración en la imagen
+    # hace que el proxy sea portable entre ambos contextos.
+    image: ${COMPOSE_PROJECT_NAME:?}-edge
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM nginx:1.27-alpine
+        COPY gateway/nginx.conf /etc/nginx/conf.d/default.conf
+    volumes: !reset []
+  message-broker:
+    container_name: !reset null
+    user: "100:101"
+    ports: !reset []
+    secrets: !reset []
+    # No se mezcla broker-data del Compose base: una ejecución anterior puede dejar
+    # .erlang.cookie con un uid distinto y RabbitMQ termina con EACCES al reiniciar.
+    volumes: !override
+      - e2e-secret-files:/run/secrets:ro
+    # La imagen declara /var/lib/rabbitmq como VOLUME; sin un montaje explícito
+    # Docker crea un volumen anónimo que puede sembrar .erlang.cookie como root.
+    # El tmpfs garantiza estado nuevo y propietario rabbitmq (uid 100, gid 101).
+    tmpfs:
+      - /var/lib/rabbitmq:mode=0700,uid=100,gid=101
+    # El stack E2E usa credenciales efímeras. Arrancar RabbitMQ directamente evita
+    # que una carrera del montaje de secretos detenga todo el stack antes del healthcheck.
+    command: ["rabbitmq-server"]
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: rhmUQ
+      RABBITMQ_ERLANG_COOKIE: rhm-e2e-erlang-cookie
   mailhog:
     container_name: !reset null
     ports: !reset []
 
-  database-empleados:     { container_name: !reset null }
-  database-notificaciones: { container_name: !reset null }
-  database-perfiles:      { container_name: !reset null }
-  database-vacaciones:    { container_name: !reset null }
-  database-auth:          { container_name: !reset null }
+  database-empleados:     { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  database-notificaciones: { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  database-perfiles:      { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  database-vacaciones:    { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
+  database-auth:          { container_name: !reset null, secrets: !reset [], volumes: [e2e-secret-files:/run/secrets:ro] }
 
   database-departamentos:
     container_name: !reset null
@@ -51,19 +99,56 @@ services:
         COPY init/ /docker-entrypoint-initdb.d/
     volumes: !override
       - departments-db-data:/var/lib/mysql
+      - e2e-secret-files:/run/secrets:ro
+    secrets: !reset []
 
   empleados-service:
     container_name: !reset null
     # En desarrollo se llama "servidor-empleados"; aquí se separa para no pisar esa imagen.
     image: ${COMPOSE_PROJECT_NAME:?}-empleados-service
-  departamentos-service:  { container_name: !reset null }
-  notificaciones-service: { container_name: !reset null }
-  perfiles-service:       { container_name: !reset null }
-  vacaciones-service:     { container_name: !reset null }
-  auth-service:           { container_name: !reset null }
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+    deploy: { replicas: 1 }
+  departamentos-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    # Jaeger queda fuera del stack funcional. Desactivar el SDK evita que el
+    # exportador síncrono prolongue /health hasta agotar el timeout de Docker.
+    environment: { OTEL_SDK_DISABLED: "true" }
+    deploy: { replicas: 1 }
+  notificaciones-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+  perfiles-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+    # El Compose de desarrollo usa dos réplicas; una es suficiente para contratos E2E
+    # y evita duplicar consumo de recursos en los ejecutores de Jenkins.
+    deploy: { replicas: 1 }
+  vacaciones-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+  auth-service:
+    container_name: !reset null
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+    deploy: { replicas: 1 }
   api-gateway:
     container_name: !reset null
     ports: !reset []
+    secrets: !reset []
+    volumes: [e2e-secret-files:/run/secrets:ro]
+    environment: { OTEL_SDK_DISABLED: "true" }
+    deploy: { replicas: 1 }
 
 volumes:
   employees-db-data:     { name: "${COMPOSE_PROJECT_NAME:?}-employees-db-data" }
@@ -73,6 +158,7 @@ volumes:
   profiles-db-data:      { name: "${COMPOSE_PROJECT_NAME:?}-profiles-db-data" }
   vacations-db-data:     { name: "${COMPOSE_PROJECT_NAME:?}-vacations-db-data" }
   auth-db-data:          { name: "${COMPOSE_PROJECT_NAME:?}-auth-db-data" }
+  e2e-secret-files:      { name: "${COMPOSE_PROJECT_NAME:?}-secret-files" }
 
   # Volúmenes de la infraestructura CI: sus servicios no se levantan en el stack E2E, pero se
   # renombran igual para que `down -v` de este proyecto jamás pueda tocar los datos de Jenkins o
