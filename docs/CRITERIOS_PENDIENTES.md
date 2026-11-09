@@ -13,7 +13,7 @@
 | Seguridad | ✅ Completa | Secretos aplicados sobre datos persistidos y CI, Gitleaks limpio y credenciales AMQP protegidas en logs. |
 | Observabilidad | ✅ Completa | Siete servicios con métricas y trazas, logs correlacionados, dashboard y seis alertas validadas. |
 | Escalabilidad | ✅ Base implementada | Nginx, dos réplicas stateless, caché y circuit breaker. |
-| DevOps | 🟡 Avanzado | Jenkins, SonarQube y registry operan; las siete pipelines están homologadas y falta conservar evidencia de una corrida completa en Jenkins. |
+| DevOps | 🟡 Avanzado | Jenkins, SonarQube, registry, Gitleaks y Trivy operan; las siete pipelines están homologadas y las corridas finales están en ejecución. |
 | Entrega | 🟡 Parcial | Infraestructura y guías operativas existen; faltan seeds, validación limpia y ZIP final. |
 
 ## 1. Funcionalidad
@@ -123,7 +123,7 @@ Pendiente:
 
 - ✅ Las siete pipelines publican JUnit/cobertura e incluyen una fase E2E aislada, opcional mediante `RUN_E2E`.
 - [ ] Ejecutar y conservar evidencia de una corrida normal y otra con `RUN_E2E` en Jenkins para cada variante de pipeline.
-- [ ] Añadir escaneo de dependencias e imágenes además de Gitleaks, y documentar webhook/polling.
+- ✅ Escaneo de dependencias e imágenes con Trivy además de Gitleaks; webhook de Sonar y polling SCM documentados.
 
 ## 7. Documentación y entrega
 
