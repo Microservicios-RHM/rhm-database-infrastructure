@@ -1,19 +1,201 @@
 {
   "annotations": {"list": []},
+  "description": "Salud, tráfico, latencia, eventos, RabbitMQ, resiliencia y logs de la plataforma RHM.",
   "editable": true,
-  "panels": [
-    {"type": "stat", "title": "Servicios disponibles", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "targets": [{"expr": "sum(up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"})"}]},
-    {"type": "timeseries", "title": "Disponibilidad", "gridPos": {"h": 8, "w": 18, "x": 6, "y": 0}, "targets": [{"expr": "up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"}", "legendFormat": "{{job}}"}]},
-    {"type": "timeseries", "title": "Peticiones HTTP por servicio", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "sum by (service) (rate(rhm_http_requests_total[5m]))", "legendFormat": "{{service}}"}]},
-    {"type": "timeseries", "title": "Errores HTTP 5xx", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}, "targets": [{"expr": "sum by (service) (rate(rhm_http_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "{{service}}"}]},
-    {"type": "timeseries", "title": "Eventos por resultado", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}, "targets": [{"expr": "sum by (service, outcome) (rate(rhm_events_total[5m]))", "legendFormat": "{{service}} / {{outcome}}"}]},
-    {"type": "timeseries", "title": "Colas RabbitMQ", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}, "targets": [{"expr": "rabbitmq_queue_messages_ready", "legendFormat": "{{queue}}"}]},
-    {"type": "stat", "title": "Circuit breaker Departamentos", "gridPos": {"h": 5, "w": 6, "x": 0, "y": 24}, "targets": [{"expr": "max(rhm_departments_circuit_breaker_open)"}]},
-    {"type": "logs", "title": "Logs correlacionados", "gridPos": {"h": 10, "w": 18, "x": 6, "y": 24}, "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"expr": "{service_name=~\".+-service|api-gateway\"} | json", "refId": "A"}]}
+  "graphTooltip": 1,
+  "links": [
+    {"title": "Prometheus", "type": "link", "url": "http://localhost:9090", "targetBlank": true},
+    {"title": "Jaeger", "type": "link", "url": "http://localhost:16686", "targetBlank": true},
+    {"title": "Alertmanager", "type": "link", "url": "http://localhost:9093", "targetBlank": true}
   ],
+  "panels": [
+    {
+      "id": 1, "type": "row", "title": "Estado de la plataforma",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "collapsed": false, "panels": []
+    },
+    {
+      "id": 2, "type": "stat", "title": "Servicios",
+      "description": "Una tarjeta por servicio: verde está disponible, rojo está caído.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 5, "w": 14, "x": 0, "y": 1},
+      "fieldConfig": {"defaults": {
+        "color": {"mode": "thresholds"},
+        "mappings": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}],
+        "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+      }, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "textMode": "value_and_name", "wideLayout": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "targets": [{"refId": "A", "expr": "up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"}", "instant": true, "range": false, "legendFormat": "{{job}}"}]
+    },
+    {
+      "id": 3, "type": "gauge", "title": "Disponibles / 7",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 5, "w": 3, "x": 14, "y": 1},
+      "fieldConfig": {"defaults": {"min": 0, "max": 7, "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 5}, {"color": "green", "value": 7}]}}, "overrides": []},
+      "options": {"orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "targets": [{"refId": "A", "expr": "sum(up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"})", "instant": true, "range": false}]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Disponibilidad",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 5, "w": 3, "x": 17, "y": 1},
+      "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 85}, {"color": "green", "value": 99}]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "targets": [{"refId": "A", "expr": "100 * avg(avg_over_time(up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"}[$__range]))", "instant": true, "range": false}]
+    },
+    {
+      "id": 5, "type": "stat", "title": "Alertas activas",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 5, "w": 2, "x": 20, "y": 1},
+      "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "none", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "targets": [{"refId": "A", "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)", "instant": true, "range": false}]
+    },
+    {
+      "id": 6, "type": "stat", "title": "RabbitMQ",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 5, "w": 2, "x": 22, "y": 1},
+      "fieldConfig": {"defaults": {
+        "mappings": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}],
+        "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+      }, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "none", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "targets": [{"refId": "A", "expr": "up{job=\"rabbitmq\"}", "instant": true, "range": false}]
+    },
+    {
+      "id": 7, "type": "row", "title": "Tráfico HTTP y experiencia",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 6}, "collapsed": false, "panels": []
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "Peticiones por segundo",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 7},
+      "fieldConfig": {"defaults": {"unit": "reqps", "min": 0, "color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 18, "showPoints": "never", "spanNulls": true}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"refId": "A", "expr": "sum by (service) (rate(rhm_http_requests_total{service=~\"$service\"}[$__rate_interval]))", "legendFormat": "{{service}}"}]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "Tasa de errores 5xx",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 7},
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never", "spanNulls": true}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"refId": "A", "expr": "100 * sum by (service) (rate(rhm_http_requests_total{service=~\"$service\",status=~\"5..\"}[$__rate_interval])) / clamp_min(sum by (service) (rate(rhm_http_requests_total{service=~\"$service\"}[$__rate_interval])), 0.001)", "legendFormat": "{{service}}"}]
+    },
+    {
+      "id": 10, "type": "timeseries", "title": "Latencia promedio y P95",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 7},
+      "fieldConfig": {"defaults": {"unit": "s", "min": 0, "color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": true}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (service) (rate(rhm_http_request_duration_seconds_sum{service=~\"$service\"}[$__rate_interval])) / clamp_min(sum by (service) (rate(rhm_http_request_duration_seconds_count{service=~\"$service\"}[$__rate_interval])), 0.001)", "legendFormat": "Promedio {{service}}"},
+        {"refId": "B", "expr": "histogram_quantile(0.95, sum by (le, service) (rate(rhm_http_request_duration_seconds_bucket{service=~\"$service\"}[$__rate_interval])))", "legendFormat": "P95 {{service}}"}
+      ]
+    },
+    {
+      "id": 11, "type": "row", "title": "Eventos, mensajería y resiliencia",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 15}, "collapsed": false, "panels": []
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Eventos por resultado",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+      "fieldConfig": {"defaults": {"unit": "ops", "min": 0, "color": {"mode": "palette-classic"}, "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 30, "showPoints": "never", "stacking": {"mode": "normal", "group": "A"}}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"refId": "A", "expr": "sum by (service, outcome) (rate(rhm_events_total{service=~\"$service\"}[$__rate_interval]))", "legendFormat": "{{service}} · {{outcome}}"}]
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "Backlog de RabbitMQ",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+      "fieldConfig": {"defaults": {"unit": "short", "min": 0, "color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "showPoints": "never", "spanNulls": true}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (queue) (rabbitmq_queue_messages_ready)", "legendFormat": "Listos · {{queue}}"},
+        {"refId": "B", "expr": "sum by (queue) (rabbitmq_queue_messages_unacked)", "legendFormat": "Sin confirmar · {{queue}}"}
+      ]
+    },
+    {
+      "id": 14, "type": "stat", "title": "Circuit breaker Departamentos",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 16},
+      "fieldConfig": {"defaults": {
+        "mappings": [{"type": "value", "options": {"0": {"text": "CERRADO", "color": "green"}, "1": {"text": "ABIERTO", "color": "red"}}}],
+        "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}
+      }, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "targets": [{"refId": "A", "expr": "max(rhm_departments_circuit_breaker_open) or vector(0)", "instant": true, "range": false}]
+    },
+    {
+      "id": 15, "type": "stat", "title": "Fallbacks en el período",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 16},
+      "fieldConfig": {"defaults": {"decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 10}]}}, "overrides": []},
+      "options": {"colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "targets": [{"refId": "A", "expr": "sum(increase(rhm_departments_cache_fallback_total[$__range])) or vector(0)", "instant": true, "range": false}]
+    },
+    {
+      "id": 16, "type": "stat", "title": "RabbitMQ en vivo",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 4, "w": 8, "x": 16, "y": 20},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "orientation": "horizontal", "textMode": "value_and_name", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
+      "targets": [
+        {"refId": "A", "expr": "rabbitmq_connections", "instant": true, "range": false, "legendFormat": "Conexiones"},
+        {"refId": "B", "expr": "rabbitmq_channels", "instant": true, "range": false, "legendFormat": "Canales"},
+        {"refId": "C", "expr": "sum(rabbitmq_queue_consumers)", "instant": true, "range": false, "legendFormat": "Consumidores"}
+      ]
+    },
+    {
+      "id": 17, "type": "row", "title": "Diagnóstico",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 24}, "collapsed": false, "panels": []
+    },
+    {
+      "id": 18, "type": "logs", "title": "Logs correlacionados",
+      "description": "Use Servicio y Buscar en logs para investigar errores o traceId.",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "gridPos": {"h": 11, "w": 16, "x": 0, "y": 25},
+      "options": {"dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [{"refId": "A", "expr": "{service_name=~\"$service|.+-service|api-gateway\"} | json |~ `(?i)$search`", "queryType": "range", "direction": "backward"}]
+    },
+    {
+      "id": 19, "type": "table", "title": "Detalle de targets",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 11, "w": 8, "x": 16, "y": 25},
+      "fieldConfig": {"defaults": {
+        "custom": {"align": "auto", "cellOptions": {"type": "color-background"}},
+        "mappings": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}],
+        "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+      }, "overrides": []},
+      "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}},
+      "targets": [{"refId": "A", "expr": "up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones|rabbitmq\"}", "instant": true, "range": false, "format": "table"}],
+      "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true}, "renameByName": {"Value": "Estado", "instance": "Instancia", "job": "Servicio"}}}]
+    }
+  ],
+  "refresh": "10s",
   "schemaVersion": 39,
-  "tags": ["rhm", "observability"],
-  "title": "RHM Platform Overview",
+  "tags": ["rhm", "observability", "operations"],
+  "templating": {"list": [
+    {
+      "name": "service", "label": "Servicio", "type": "query",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "query": {"query": "label_values(rhm_http_requests_total, service)", "refId": "VariableQuery"},
+      "definition": "label_values(rhm_http_requests_total, service)",
+      "includeAll": true, "allValue": ".*", "multi": true, "refresh": 1,
+      "current": {"selected": true, "text": "Todos", "value": "$__all"},
+      "options": []
+    },
+    {
+      "name": "search", "label": "Buscar en logs", "type": "textbox",
+      "query": "", "current": {"selected": true, "text": "", "value": ""},
+      "options": [{"selected": true, "text": "", "value": ""}]
+    }
+  ]},
+  "time": {"from": "now-1h", "to": "now"},
+  "timepicker": {"refresh_intervals": ["5s", "10s", "30s", "1m", "5m"], "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d"]},
+  "timezone": "browser",
+  "title": "RHM · Operación de Plataforma",
   "uid": "rhm-platform-overview",
-  "version": 2
+  "version": 3,
+  "weekStart": "monday"
 }
