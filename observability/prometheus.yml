@@ -24,3 +24,29 @@ scrape_configs:
     static_configs: [{ targets: ["vacaciones-service:8080"] }]
   - job_name: rabbitmq
     static_configs: [{ targets: ["message-broker:15692"] }]
+  - job_name: service-health
+    metrics_path: /probe
+    params:
+      module: [http_health]
+    static_configs:
+      - targets: ["http://api-gateway:8080/health"]
+        labels: { service: api-gateway }
+      - targets: ["http://empleados-service:8080/health"]
+        labels: { service: empleados }
+      - targets: ["http://departamentos-service/health"]
+        labels: { service: departamentos }
+      - targets: ["http://auth-service:8080/health"]
+        labels: { service: auth }
+      - targets: ["http://notificaciones-service:8080/health"]
+        labels: { service: notificaciones }
+      - targets: ["http://perfiles-service:8080/health"]
+        labels: { service: perfiles }
+      - targets: ["http://vacaciones-service:8080/health"]
+        labels: { service: vacaciones }
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

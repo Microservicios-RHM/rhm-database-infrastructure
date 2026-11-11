@@ -24,7 +24,7 @@
         "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
       }, "overrides": []},
       "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "textMode": "value_and_name", "wideLayout": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
-      "targets": [{"refId": "A", "expr": "up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"}", "instant": true, "range": false, "legendFormat": "{{job}}"}]
+      "targets": [{"refId": "A", "expr": "probe_success{job=\"service-health\"}", "instant": true, "range": false, "legendFormat": "{{service}}"}]
     },
     {
       "id": 3, "type": "gauge", "title": "Disponibles / 7",
@@ -32,7 +32,7 @@
       "gridPos": {"h": 5, "w": 3, "x": 14, "y": 1},
       "fieldConfig": {"defaults": {"min": 0, "max": 7, "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 5}, {"color": "green", "value": 7}]}}, "overrides": []},
       "options": {"orientation": "auto", "showThresholdLabels": false, "showThresholdMarkers": true, "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
-      "targets": [{"refId": "A", "expr": "sum(up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"})", "instant": true, "range": false}]
+      "targets": [{"refId": "A", "expr": "sum(probe_success{job=\"service-health\"})", "instant": true, "range": false}]
     },
     {
       "id": 4, "type": "stat", "title": "Disponibilidad",
@@ -40,7 +40,7 @@
       "gridPos": {"h": 5, "w": 3, "x": 17, "y": 1},
       "fieldConfig": {"defaults": {"unit": "percent", "decimals": 1, "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 85}, {"color": "green", "value": 99}]}}, "overrides": []},
       "options": {"colorMode": "background", "graphMode": "area", "textMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}},
-      "targets": [{"refId": "A", "expr": "100 * avg(avg_over_time(up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones\"}[$__range]))", "instant": true, "range": false}]
+      "targets": [{"refId": "A", "expr": "100 * avg(avg_over_time(probe_success{job=\"service-health\"}[$__range]))", "instant": true, "range": false}]
     },
     {
       "id": 5, "type": "stat", "title": "Alertas activas",
@@ -168,7 +168,7 @@
         "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
       }, "overrides": []},
       "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}},
-      "targets": [{"refId": "A", "expr": "up{job=~\"api-gateway|empleados|departamentos|auth|notificaciones|perfiles|vacaciones|rabbitmq\"}", "instant": true, "range": false, "format": "table"}],
+      "targets": [{"refId": "A", "expr": "probe_success{job=\"service-health\"}", "instant": true, "range": false, "format": "table"}],
       "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true}, "renameByName": {"Value": "Estado", "instance": "Instancia", "job": "Servicio"}}}]
     }
   ],

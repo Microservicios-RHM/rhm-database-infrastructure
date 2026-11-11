@@ -2,11 +2,11 @@ groups:
   - name: rhm-platform
     rules:
       - alert: ServiceDown
-        expr: up == 0
+        expr: probe_success{job="service-health"} == 0
         for: 1m
         labels: { severity: critical }
         annotations:
-          summary: "Service {{ $labels.job }} is unavailable"
+          summary: "Service {{ $labels.service }} or one of its critical dependencies is unavailable"
       - alert: HighServerErrorRate
         expr: sum(rate(rhm_http_requests_total{status=~"5.."}[5m])) by (service) > 0.1
         for: 5m
