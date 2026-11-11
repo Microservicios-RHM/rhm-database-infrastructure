@@ -12,6 +12,8 @@
 #   - volúmenes y red con nombre propio → se crean vacíos y `down -v` solo borra los suyos
 #   - sin puertos publicados            → dos pipelines a la vez no compiten por el 8080 del host
 #   - Jenkins, SonarQube y el registry quedan fuera (perfil "ci-infra" que nunca se activa)
+#   - el stack de observabilidad (Reto 8) también: el E2E verifica el negocio, no el monitoreo, y
+#     sin Zipkin los servicios desactivan el tracing (OTEL_EXPORTER_ZIPKIN_ENDPOINT vacío)
 #
 # Requiere Docker Compose >= 2.24 (etiquetas !reset / !override).
 
@@ -22,6 +24,13 @@ services:
   sonarqube:   { profiles: [ci-infra] }
   sonar-init:  { profiles: [ci-infra] }
   registry:    { profiles: [ci-infra] }
+
+  # --- Observabilidad (Reto 8): tampoco forma parte del sistema bajo prueba -------------------------
+  prometheus:  { profiles: [ci-infra] }
+  loki:        { profiles: [ci-infra] }
+  promtail:    { profiles: [ci-infra] }
+  zipkin:      { profiles: [ci-infra] }
+  grafana:     { profiles: [ci-infra] }
 
   # --- Sistema bajo prueba ------------------------------------------------------------------------
   message-broker:
@@ -52,18 +61,21 @@ services:
     volumes: !override
       - departments-db-data:/var/lib/mysql
 
+  # Sin Zipkin en el stack E2E: endpoint vacío = tracing desactivado en los 7 servicios.
   empleados-service:
     container_name: !reset null
     # En desarrollo se llama "servidor-empleados"; aquí se separa para no pisar esa imagen.
     image: ${COMPOSE_PROJECT_NAME:?}-empleados-service
-  departamentos-service:  { container_name: !reset null }
-  notificaciones-service: { container_name: !reset null }
-  perfiles-service:       { container_name: !reset null }
-  vacaciones-service:     { container_name: !reset null }
-  auth-service:           { container_name: !reset null }
+    environment: { OTEL_EXPORTER_ZIPKIN_ENDPOINT: "" }
+  departamentos-service:  { container_name: !reset null, environment: { OTEL_EXPORTER_ZIPKIN_ENDPOINT: "" } }
+  notificaciones-service: { container_name: !reset null, environment: { OTEL_EXPORTER_ZIPKIN_ENDPOINT: "" } }
+  perfiles-service:       { container_name: !reset null, environment: { OTEL_EXPORTER_ZIPKIN_ENDPOINT: "" } }
+  vacaciones-service:     { container_name: !reset null, environment: { OTEL_EXPORTER_ZIPKIN_ENDPOINT: "" } }
+  auth-service:           { container_name: !reset null, environment: { OTEL_EXPORTER_ZIPKIN_ENDPOINT: "" } }
   api-gateway:
     container_name: !reset null
     ports: !reset []
+    environment: { OTEL_EXPORTER_ZIPKIN_ENDPOINT: "" }
 
 volumes:
   employees-db-data:     { name: "${COMPOSE_PROJECT_NAME:?}-employees-db-data" }
@@ -84,6 +96,9 @@ volumes:
   sonarqube-logs: { name: "${COMPOSE_PROJECT_NAME:?}-sonarqube-logs" }
   sonarqube-extensions: { name: "${COMPOSE_PROJECT_NAME:?}-sonarqube-extensions" }
   registry-data: { name: "${COMPOSE_PROJECT_NAME:?}-registry-data" }
+  prometheus-data: { name: "${COMPOSE_PROJECT_NAME:?}-prometheus-data" }
+  loki-data: { name: "${COMPOSE_PROJECT_NAME:?}-loki-data" }
+  grafana-data: { name: "${COMPOSE_PROJECT_NAME:?}-grafana-data" }
 
 networks:
   microservices-network:

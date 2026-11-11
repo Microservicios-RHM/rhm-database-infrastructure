@@ -1,5 +1,15 @@
 name: rhm-platform
 
+# Reto 8: configuración de OpenTelemetry común a los 7 microservicios. Cada servicio la incluye con
+# `<<: *otel-env` y agrega su propio OTEL_SERVICE_NAME. La URL usa el nombre de red Docker `zipkin`,
+# nunca localhost (dentro de un contenedor, localhost es el propio contenedor).
+x-otel-env: &otel-env
+  OTEL_EXPORTER_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+  OTEL_PROPAGATORS: tracecontext,baggage
+  OTEL_TRACES_EXPORTER: zipkin
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
+
 services:
   message-broker:
     image: rabbitmq:4-management-alpine
@@ -58,6 +68,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: empleados-service
       NODE_ENV: production
       LOG_LEVEL: ${EMPLOYEES_LOG_LEVEL:-info}
       LOG_PRETTY: "false"
@@ -130,6 +142,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: departamentos-service
       APP_ENV: production
       DB_HOST: database-departamentos
       DB_PORT: 3306
@@ -177,6 +191,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: notificaciones-service
       LOG_LEVEL: ${NOTIFICATIONS_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-notificaciones
@@ -235,6 +251,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: perfiles-service
       LOG_LEVEL: ${PROFILES_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-perfiles
@@ -287,6 +305,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: vacaciones-service
       LOG_LEVEL: ${VACATIONS_LOG_LEVEL:-info}
       PORT: 8080
       DB_HOST: database-vacaciones
@@ -341,6 +361,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: auth-service
       NODE_ENV: production
       LOG_LEVEL: ${AUTH_LOG_LEVEL:-info}
       LOG_PRETTY: "false"
@@ -389,6 +411,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: api-gateway
       NODE_ENV: production
       PORT: 8080
       EMPLEADOS_SERVICE_URL: http://empleados-service:8080
@@ -420,6 +444,129 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    networks:
+      - microservices-network
+
+  # ------------------------------------------------------------------------------------------------
+  # Observabilidad (Reto 8): métricas (Prometheus), logs (Loki + Promtail), trazas (Zipkin) y
+  # visualización/alertas (Grafana). Todos en microservices-network, la misma red de los servicios:
+  # Prometheus los alcanza por nombre (empleados-service:8080) y ellos envían trazas a zipkin:9411.
+  # Configuración versionada en observability/ (ver README, sección "Observabilidad").
+  # ------------------------------------------------------------------------------------------------
+
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION:-latest}
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    # Jenkins (Reto 7) ya publica el 9090 del host; Prometheus sale por el 9091 por defecto. Dentro
+    # de la red Docker sigue siendo prometheus:9090 (es la URL que usa Grafana).
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9091}:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  loki:
+    image: grafana/loki:${LOKI_VERSION:-latest}
+    container_name: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "${LOKI_HOST_PORT:-3100}:3100"
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    # Sin healthcheck: la imagen de Loki es distroless (sin shell ni wget). Promtail reintenta el
+    # envío y Grafana reintenta la consulta, así que basta con que el contenedor haya arrancado.
+    networks:
+      - microservices-network
+
+  promtail:
+    image: grafana/promtail:${PROMTAIL_VERSION:-latest}
+    container_name: promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml -config.expand-env=true
+    environment:
+      # Promtail solo recolecta los contenedores de este proyecto Compose.
+      COMPOSE_PROJECT_NAME: rhm-platform
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # Descubre los contenedores y lee sus logs por la API de Docker (solo lectura).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - microservices-network
+
+  zipkin:
+    image: openzipkin/zipkin:${ZIPKIN_VERSION:-latest}
+    container_name: zipkin
+    restart: unless-stopped
+    ports:
+      - "${ZIPKIN_HOST_PORT:-9411}:9411"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9411/health | grep -q UP"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    networks:
+      - microservices-network
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION:-latest}
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_PUBLIC_URL:-http://localhost:3000}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/rhm-overview.json
+      # Canal de alertas: correo por SMTP. En local, MailHog (http://localhost:8025).
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-mailhog:1025}
+      GF_SMTP_USER: ${GRAFANA_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GRAFANA_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-alertas@rhm.local}
+      GF_SMTP_FROM_NAME: Alertas RHM
+      GF_SMTP_STARTTLS_POLICY: ${GRAFANA_SMTP_STARTTLS_POLICY:-NoStartTLS}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-soporte@rhm.local}
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+    volumes:
+      # Dashboards, configuración y estado de las alertas persisten entre reinicios.
+      - grafana-data:/var/lib/grafana
+      # Datasources, dashboards y alertas como código: disponibles al hacer `docker compose up`.
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
+      zipkin:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     networks:
       - microservices-network
 
@@ -589,6 +736,12 @@ volumes:
     name: sonarqube-extensions
   registry-data:
     name: registry-data
+  prometheus-data:
+    name: prometheus-data
+  loki-data:
+    name: loki-data
+  grafana-data:
+    name: grafana-data
 
 networks:
   microservices-network:

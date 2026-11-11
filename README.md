@@ -25,6 +25,11 @@ microservicios y sus bases de datos aisladas con un solo comando.
 | `sonar-db` | PostgreSQL 17 | interno 5432 (sin publicar) | `sonar-db-data` |
 | `sonar-init` | one-shot (curl) que aprovisiona SonarQube | — | `sonar-token` |
 | `registry` (`docker-registry`) | Docker Registry 2 — Reto 7 | 5000 | `registry-data` |
+| `prometheus` | Prometheus — métricas, Reto 8 | 9091 (interno 9090) | `prometheus-data` |
+| `grafana` | Grafana — dashboards y alertas, Reto 8 | 3000 | `grafana-data`, `observability/grafana` |
+| `loki` | Loki — logs, Reto 8 | 3100 | `loki-data` |
+| `promtail` | Promtail — recolector de logs, Reto 8 | — | socket Docker del host (solo lectura) |
+| `zipkin` | Zipkin — trazas distribuidas, Reto 8 | 9411 | en memoria |
 
 La única entrada HTTP publicada para los microservicios es `http://localhost:8080`, servida por el
 Gateway. Dentro de Docker, el Gateway enruta `/empleados/*` a `empleados-service:8080`,
@@ -139,7 +144,9 @@ RabbitMQ (UI):   http://localhost:15672
 Jenkins (CI):    http://localhost:9090   (ver "Integración continua", Reto 7)
 SonarQube:       http://localhost:9000
 Registry:        http://localhost:5000/v2/_catalog
-```
+Grafana:         http://localhost:3000   (ver "Observabilidad y monitoreo", Reto 8)
+Prometheus:      http://localhost:9091
+Zipkin:          http://localhost:9411
 
 Ningún microservicio ni base de datos publica su puerto HTTP directamente al host — todos son
 alcanzables solo dentro de `microservices-network` (`empleados-service:8080`,
@@ -628,6 +635,474 @@ ms-employees/   Jenkinsfile, sonar-project.properties, tsconfig.sonar.json
 ms-vacation/    Jenkinsfile, sonar-project.properties, ci/agent.Dockerfile
 ```
 
+## Observabilidad y monitoreo (Reto 8)
+
+Hasta el Reto 7 el sistema era una caja negra: si `POST /empleados` tardaba 5 segundos no había forma
+de saber si la culpa era de empleados-service, de su PostgreSQL, de departamentos-service o del
+broker. Este reto instrumenta los 7 servicios para responder cuatro preguntas:
+
+| Pregunta | Pilar | Herramienta |
+|---|---|---|
+| ¿Está vivo el sistema? | Health checks | `GET /health` en cada servicio + `up{job}` de Prometheus |
+| ¿Cómo se está comportando? | Métricas | Prometheus (pull) + dashboard de Grafana |
+| ¿Qué hizo exactamente? | Trazas y logs | OpenTelemetry → Zipkin; logs JSON → Promtail → Loki |
+| ¿Alguien me avisa si algo falla? | Alertas | Reglas de Grafana → correo (MailHog) |
+
+### Acceso
+
+| Herramienta | URL | Credenciales |
+|---|---|---|
+| Grafana (dashboard + alertas) | http://localhost:3000 | `admin` / `admin` (`GRAFANA_ADMIN_*` en `.env`) |
+| Prometheus | http://localhost:9091 → *Status → Targets* | — |
+| Zipkin | http://localhost:9411 | — |
+| Loki (API, se consulta desde Grafana) | http://localhost:3100/ready | — |
+| MailHog (correos de alerta) | http://localhost:8025 | — |
+
+> **Puerto de Prometheus.** El enunciado lo ubica en el 9090, pero ese puerto del host ya lo ocupa
+> Jenkins desde el Reto 7. Prometheus se publica en el **9091** (`PROMETHEUS_HOST_PORT`); dentro de la
+> red Docker sigue siendo `http://prometheus:9090`, que es la URL que usa Grafana.
+
+Todo se levanta con el mismo comando de siempre; datasources, dashboard y alertas se aprovisionan
+solos, sin configurar nada en la interfaz:
+
+```bash
+docker compose up --build -d
+```
+
+### Investigación previa
+
+**Los tres pilares.** Las *métricas* son números agregados en el tiempo (peticiones por segundo,
+latencia, memoria): baratas de guardar y perfectas para dashboards y alertas, pero no dicen *qué
+petición* falló. Los *logs* son eventos discretos con detalle (qué empleado, qué error): explican un
+caso concreto, pero son caros de buscar si no están centralizados y estructurados. Las *trazas*
+siguen una petición a través de todos los servicios que toca, con la duración de cada tramo (span):
+dicen *dónde* se fue el tiempo. Se complementan: la métrica avisa (latencia alta en el Gateway), la
+traza ubica (el span de departamentos-service tarda 4 s) y el log explica (timeout contra MySQL), y el
+`traceId` presente en los tres los une.
+
+**Modelo pull vs. push.** Prometheus usa *pull*: cada 15 s hace `GET /metrics` a cada servicio
+(*scraping*). El servicio solo expone su estado actual y no sabe quién lo lee; si un servicio no
+responde, el propio scrape fallido es la señal (`up == 0`), lo que convierte a Prometheus también en
+un health check externo. Las trazas usan *push*: cada servicio envía sus spans a Zipkin
+(`POST http://zipkin:9411/api/v2/spans`) cuando terminan, porque un span es un evento que ocurre una
+sola vez y se perdería si esperara a que alguien lo pidiera. Los logs también son push: Promtail lee
+los logs de cada contenedor y los empuja a Loki.
+
+**OpenTelemetry y la CNCF.** La *Cloud Native Computing Foundation* (Linux Foundation) aloja los
+proyectos de referencia del ecosistema cloud native (Kubernetes, Prometheus, Jaeger, OpenTelemetry).
+OpenTelemetry es su estándar para instrumentar: una API y un SDK por lenguaje, con el mismo modelo de
+datos y las mismas variables de entorno (`OTEL_SERVICE_NAME`, `OTEL_PROPAGATORS`...) en Node, Python,
+Go, Ruby y PHP. Es agnóstico al proveedor: el código crea spans contra la API de OTel y el
+*exportador* decide el destino (Zipkin aquí; Jaeger, Tempo o un SaaS cambiando solo el exportador).
+En un ecosistema de cinco lenguajes como este es lo que permite que todos produzcan trazas
+compatibles.
+
+**W3C Trace Context.** Es la especificación que define cómo viaja la traza entre servicios, en la
+cabecera HTTP `traceparent`:
+
+```text
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+             │  │                                │                └ flags (01 = muestreada)
+             │  │                                └ span-id del llamador (8 bytes)
+             │  └ trace-id, igual en todos los servicios de la petición (16 bytes)
+             └ versión
+```
+
+El Gateway (Node) crea el `trace-id` y lo envía a empleados-service; este lo reenvía a
+departamentos-service (PHP); cada uno lee la cabecera, crea su span como hijo y la reenvía con su
+propio `span-id`. Como el formato es un estándar y no una convención de una librería, un servicio en
+PHP entiende la cabecera que escribió uno en Node. Por RabbitMQ no hay cabeceras HTTP: la misma
+cadena viaja en las cabeceras del mensaje AMQP (ver más abajo).
+
+### Diagrama de la arquitectura de observabilidad
+
+```mermaid
+flowchart LR
+    cliente([Cliente HTTP])
+    alerta([Correo de soporte<br/>MailHog :8025])
+
+    subgraph red["Red Docker: microservices-network"]
+        direction LR
+        subgraph negocio["Microservicios instrumentados (/metrics, /health, logs JSON, OTel)"]
+            gw[api-gateway<br/>Node]
+            emp[empleados-service<br/>Node]
+            dep[departamentos-service<br/>PHP]
+            auth[auth-service<br/>Node]
+            per[perfiles-service<br/>Go]
+            noti[notificaciones-service<br/>Python]
+            vac[vacaciones-service<br/>Ruby]
+        end
+        broker[(message-broker<br/>RabbitMQ)]
+        subgraph obs["Stack de observabilidad"]
+            prom[Prometheus :9090]
+            zipkin[Zipkin :9411]
+            promtail[Promtail]
+            loki[Loki :3100]
+            grafana[Grafana :3000]
+        end
+    end
+
+    cliente -->|HTTP + traceparent| gw
+    gw --> emp & dep & auth & per & noti & vac
+    emp -->|HTTP + traceparent| dep
+    emp & vac & auth -->|eventos + traceparent en cabeceras AMQP| broker
+    broker --> auth & noti & per & vac
+
+    prom -. "pull: GET /metrics cada 15 s" .-> gw & emp & dep & auth & per & noti & vac
+    negocio -- "push: spans (Zipkin JSON)" --> zipkin
+    promtail -. "descubre contenedores y lee logs<br/>(socket Docker)" .-> negocio
+    promtail -- "push: logs" --> loki
+    grafana -- PromQL --> prom
+    grafana -- LogQL --> loki
+    grafana -- trazas --> zipkin
+    grafana -- "alerta (SMTP)" --> alerta
+```
+
+1. **Componentes:** Prometheus, Grafana, Loki, Promtail y Zipkin, como servicios del mismo
+   `docker-compose.yml` ([`observability/`](observability/) guarda su configuración).
+2. **Prometheus → microservicios:** misma red `microservices-network`; los targets son los nombres de
+   servicio de Compose (`empleados-service:8080`, `departamentos-service:80`...), no IPs.
+3. **Trazas:** cada SDK de OpenTelemetry envía los spans a `http://zipkin:9411/api/v2/spans`.
+4. **Grafana → Prometheus:** datasource `http://prometheus:9090` aprovisionado desde
+   [`observability/grafana/provisioning/datasources`](observability/grafana/provisioning/datasources/datasources.yml),
+   junto con Loki y Zipkin.
+
+### Zipkin en lugar de Jaeger
+
+Se eligió **Zipkin**: una sola imagen sin dependencias (almacenamiento en memoria), UI centrada justo
+en lo que pide el reto (buscar una traza y ver la cascada de spans) y exportador oficial en los cinco
+lenguajes del ecosistema, incluido PHP. Jaeger escala mejor en producción (Cassandra/Elasticsearch,
+muestreo adaptativo), pero aquí esa capacidad no se usa y su UI agrega pantallas que no se
+necesitan. Además, Grafana trae datasource nativo de Zipkin, así que un log de Loki enlaza directo a
+su traza. La contrapartida: Zipkin guarda las trazas en memoria y se pierden al reiniciar el
+contenedor, aceptable en desarrollo.
+
+### Instrumentación por servicio
+
+Los 7 servicios exponen **los mismos nombres de métricas y etiquetas**, para que el dashboard use una
+sola consulta por panel en lugar de una por lenguaje:
+
+- `http_requests_total{method, route, status}`: contador de peticiones.
+- `http_request_duration_seconds{method, route, status}`: histograma de latencia (`_bucket`, `_sum`, `_count`).
+- `process_cpu_seconds_total` y `process_resident_memory_bytes`: CPU y memoria.
+
+`route` es la **plantilla** de la ruta (`/empleados/:id`, `/perfiles/{empleadoId}`), nunca la URL
+con el id real: con el id, cada empleado crearía una serie nueva y Prometheus se saturaría (alta
+cardinalidad). En el Gateway, que solo reenvía, `route` es el prefijo del servicio de destino.
+
+| Servicio | Lenguaje | Métricas (`/metrics`) | Trazas (OpenTelemetry → Zipkin) | Logs JSON |
+|---|---|---|---|---|
+| `api-gateway` | Node.js / Express | `prom-client` | `@opentelemetry/sdk-trace` + `instrumentation-http`/`express`/`undici` + `exporter-zipkin` | `pino` (antes `console.log`) |
+| `empleados-service` | Node.js / Express | `prom-client` | ídem + `instrumentation-pg`; propagación AMQP manual | `pino` + `mixin` de traceId |
+| `auth-service` | Node.js / Express | `prom-client` | ídem + `instrumentation-pg`; propagación AMQP manual | `pino` + `mixin` de traceId |
+| `departamentos-service` | PHP 8.3 / Apache | `promphp/prometheus_client_php` (APCu) | `open-telemetry/sdk` + `exporter-zipkin`; span de servidor y de MySQL manuales | `JsonLogger` propio a `php://stderr` |
+| `notificaciones-service` | Python / FastAPI | `prometheus_client` | `opentelemetry-sdk` + `instrumentation-fastapi`/`asyncpg` + `exporter-zipkin-json` | `logging` + `JsonFormatter` |
+| `perfiles-service` | Go / `net/http` | `prometheus/client_golang` | `go.opentelemetry.io/otel` + `otelhttp` + `exporters/zipkin` | `log/slog` JSON + handler de traceId |
+| `vacaciones-service` | Ruby / Sinatra | `prometheus-client` (client_ruby) | `opentelemetry-sdk` + `instrumentation-sinatra`/`rack`/`pg` + `exporter-zipkin` | `Infrastructure::Logger` |
+
+Configuración común (ancla `x-otel-env` del `docker-compose.yml`):
+
+```dotenv
+OTEL_SERVICE_NAME=empleados-service          # uno por servicio; es el nombre que muestra Zipkin
+OTEL_EXPORTER_ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
+OTEL_PROPAGATORS=tracecontext,baggage        # W3C Trace Context
+```
+
+Sin `OTEL_EXPORTER_ZIPKIN_ENDPOINT` (pruebas unitarias, stack E2E del Reto 7) ningún servicio instala
+el SDK: la API de OpenTelemetry queda en modo no-op y el servicio funciona igual.
+
+Decisiones que no salen de la tabla:
+
+- **PHP no es un proceso de larga vida.** Apache atiende cada petición en un worker distinto y PHP
+  descarta su memoria al terminar, así que un contador en memoria volvería a cero en cada petición.
+  Los contadores de Prometheus viven en **APCu** (memoria compartida entre workers; se instala con
+  `pecl` en el Dockerfile), y CPU/memoria se leen del cgroup del contenedor. Tampoco hay
+  instrumentación automática: `public/index.php` extrae el `traceparent`, abre el span de servidor y lo
+  cierra en el `register_shutdown_function`, y `TracedPdo`/`TracedStatement` crean un span por cada
+  consulta a MySQL sin tocar el repositorio.
+- **Ruby no trae métricas de proceso** como los clientes de Node, Python o Go: se calculan en cada
+  scrape con `Process.clock_gettime` y `/proc/self/status`.
+- **Node es ESM:** las instrumentaciones se cargan antes que la aplicación con
+  `node --import ./dist/.../tracing.js` y el hook `@opentelemetry/instrumentation/hook.mjs`.
+- `/health` y `/metrics` no generan trazas ni entradas en el access log: el healthcheck de Docker y el
+  scraping llegan cada pocos segundos y taparían las peticiones reales.
+
+### Trazas a través de RabbitMQ y el caso del scheduler
+
+La instrumentación automática propaga el contexto por HTTP, pero **no por RabbitMQ**: un mensaje AMQP
+no es una petición HTTP. En los 5 servicios que publican o consumen eventos la propagación se hizo a
+mano:
+
+- **Productor** (empleados, auth, vacaciones): abre un span `PRODUCER` (`empleado.creado publish`),
+  inyecta su contexto con el propagador W3C en las **cabeceras del mensaje** (`headers` de amqplib /
+  Bunny) y publica.
+- **Consumidor** (auth, notificaciones, perfiles, vacaciones): extrae el `traceparent` de las cabeceras
+  y procesa el evento dentro de un span `CONSUMER` hijo (`empleado.creado process`). Todo lo que pasa
+  dentro (consultas, logs, eventos que publica a su vez, el envío SMTP) queda en la misma traza.
+
+**El caso difícil: el scheduler de vacaciones.** `vacaciones.iniciadas` no nace de ninguna petición:
+lo dispara un hilo cada minuto. En `vacaciones-service` cada transición abre a mano un **span raíz**
+`scheduler.vacaciones.iniciar` (atributos `vacaciones.id` y `empleado.id`) *antes* de publicar
+(`TransitionTracing`, en `ms-vacation/app/infrastructure/observability/message_tracing.rb`).
+La cadena completa queda en **una sola traza**:
+
+```text
+scheduler.vacaciones.iniciar                        vacaciones-service  (raíz)
+└─ vacaciones.iniciadas publish                     vacaciones-service  (PRODUCER)
+   └─ vacaciones.iniciadas process                  auth-service        (CONSUMER: suspende la cuenta)
+      ├─ pg.query:update auth_db                    auth-service        (pg)
+      └─ cuenta.desactivada publish                 auth-service        (PRODUCER)
+         └─ cuenta.desactivada process              notificaciones-service (CONSUMER)
+            ├─ insert / commit                      notificaciones-service (asyncpg)
+            └─ smtp send                            notificaciones-service (envía el correo)
+```
+
+Verificado en Zipkin (ver «Pruebas del sistema» más abajo).
+
+La capa de aplicación no depende de OpenTelemetry: `AdvanceVacationPeriods` recibe un envoltorio
+`transition_tracing` que por defecto no hace nada, y `bootstrap.rb` le inyecta el que crea el span.
+
+### Health checks
+
+Cada servicio responde `GET /health` verificando de verdad sus dependencias (con un tiempo límite de 2 s
+por chequeo):
+
+```json
+{ "status": "UP", "service": "empleados-service", "checks": { "database": "UP", "messageBroker": "UP" } }
+```
+
+HTTP 200 si todo está `UP`; **503** si alguna dependencia está `DOWN`, y en ese caso el healthcheck de
+Docker marca el contenedor como `unhealthy`. departamentos-service solo chequea `database` (no usa el
+broker). El Gateway chequea los `/health` de los 6 servicios y se declara `DOWN` solo si **ninguno**
+responde: con un servicio caído sigue enrutando a los demás, y el detalle por servicio queda en
+`checks`.
+
+### Logs centralizados (Loki + Promtail)
+
+Todos los servicios escriben una línea JSON por evento con los campos mínimos del reto:
+
+```json
+{"timestamp":"2026-11-07T15:02:11.418Z","level":"INFO","service":"empleados-service","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b7","message":"Event published","eventType":"empleado.creado"}
+```
+
+Promtail descubre los contenedores del proyecto por el socket de Docker, extrae `level` como etiqueta
+y los envía a Loki. El `traceId` **no** es etiqueta (un valor distinto por petición dispararía la
+cardinalidad de Loki): queda en la línea, y el datasource de Loki lo convierte en un enlace **«Ver
+traza en Zipkin»**.
+
+Consultas LogQL útiles (Grafana → *Explore* → Loki):
+
+```logql
+# Errores y advertencias de todo el sistema
+{service=~".+", level=~"ERROR|WARN"}
+
+# Todo lo que pasó en una petición, en todos los servicios
+{service=~".+"} |= "4bf92f3577b34da6a3ce929d0e0e4736"
+
+# Eventos consumidos por notificaciones-service, con los campos del JSON como columnas
+{service="notificaciones-service"} | json | message =~ "Notification.*"
+
+# Errores por servicio en los últimos 5 minutos (métrica a partir de logs)
+sum by (service) (count_over_time({level="ERROR"}[5m]))
+```
+
+### Dashboard de Grafana
+
+**RHM — Observabilidad de microservicios** (carpeta *RHM*, también es la página de inicio de Grafana),
+aprovisionado desde
+[`observability/grafana/dashboards/rhm-overview.json`](observability/grafana/dashboards/rhm-overview.json):
+
+| Fila | Paneles |
+|---|---|
+| Resumen del Sistema | Estado de cada servicio (`up{job}`, Stat verde/rojo) · peticiones/s, % de 5xx y p95 del Gateway · servicios caídos |
+| Comportamiento del Tráfico | Tasa de peticiones por servicio · latencia promedio · errores 4xx/5xx por código · latencia p95 |
+| Saturación | CPU (`rate(process_cpu_seconds_total[1m])`) y memoria residente por servicio |
+| Logs centralizados | Errores y advertencias de todos los servicios (Loki), con enlace a la traza |
+
+Las consultas excluyen `route="/health"` para que el healthcheck de Docker no infle el tráfico. El
+dashboard se edita como código: cambiar el JSON del repositorio y reiniciar Grafana (los cambios
+hechos en la interfaz no se guardan, `allowUiUpdates: false`).
+
+### Alertas
+
+Reglas aprovisionadas en
+[`observability/grafana/provisioning/alerting/rules.yml`](observability/grafana/provisioning/alerting/rules.yml),
+evaluadas cada 30 s, una instancia de alerta por servicio:
+
+| Regla | Condición | Severidad |
+|---|---|---|
+| Servicio caído | `up{job} < 1` durante 1 min | critical |
+| Alta tasa de errores 5xx | 5xx > 10 % de las peticiones durante 2 min | critical |
+| Alta latencia | latencia promedio > 2 s durante 2 min | warning |
+
+**Canal de notificación: correo electrónico por SMTP.** Grafana envía las alertas a
+`ALERT_EMAIL_TO` (por defecto `soporte@rhm.local`) a través de **MailHog** (`mailhog:1025`), el mismo
+SMTP de pruebas que ya usaba notificaciones-service desde el Reto 5. Los correos se leen en
+http://localhost:8025. No necesita cuentas externas ni secretos en el repositorio, y funciona igual en
+cualquier máquina del equipo. Para usar un buzón real basta con cambiar variables de `.env`, sin tocar
+el aprovisionamiento:
+
+```dotenv
+GRAFANA_SMTP_HOST=smtp.gmail.com:587
+GRAFANA_SMTP_USER=equipo.rhm@gmail.com
+GRAFANA_SMTP_PASSWORD=<contraseña de aplicación>
+GRAFANA_SMTP_STARTTLS_POLICY=MandatoryStartTLS
+ALERT_EMAIL_TO=soporte@empresa.com
+```
+
+Configuración: punto de contacto `email-soporte-rhm`
+([`contact-points.yml`](observability/grafana/provisioning/alerting/contact-points.yml)) y política
+de notificación ([`policies.yml`](observability/grafana/provisioning/alerting/policies.yml)) que
+agrupa por regla y servicio.
+
+### Pruebas del sistema: simulación del caos
+
+Ejecutadas el 2026-11-08 contra el stack completo (`docker compose up -d`), con tráfico generado por el
+Gateway (logins, consultas a los 6 servicios y altas de empleados). Horas en UTC.
+
+**1. Stack activo.** Prometheus muestra los 7 microservicios en `UP` (más el propio Prometheus):
+
+![Targets de Prometheus](docs/img/reto8/prometheus-targets.png)
+
+**2. Traza del onboarding (`POST /empleados`), una sola cascada con los 7 servicios.** Gateway →
+empleados-service (consultas a PostgreSQL y validación HTTP contra departamentos-service y su MySQL) →
+`empleado.creado` por RabbitMQ → perfiles, vacaciones, auth y notificaciones en paralelo; auth publica
+`usuario.creado` y notificaciones envía el correo (`smtp send`). En total, 49 spans:
+
+![Traza del onboarding en Zipkin](docs/img/reto8/zipkin-traza-onboarding.png)
+
+**3. Traza del scheduler (el caso difícil).** Un período de vacaciones que empieza hoy: en la
+siguiente pasada del scheduler aparece **una sola traza** cuya raíz es
+`scheduler.vacaciones.iniciar` (`Parent ID: none`, atributos `vacaciones.id` y `empleado.id`), con
+auth-service suspendiendo la cuenta y notificaciones-service enviando el correo:
+
+```text
+scheduler.vacaciones.iniciar                 vacaciones-service      0,4 ms   (raíz)
+└─ vacaciones.iniciadas publish              vacaciones-service      0,2 ms
+   └─ vacaciones.iniciadas process           auth-service            6,9 ms
+      ├─ pg.query:insert / select / update   auth-service                     (deduplicación + suspensión)
+      └─ cuenta.desactivada publish          auth-service            0,2 ms
+         └─ cuenta.desactivada process       notificaciones-service  8,1 ms
+            ├─ begin / insert / commit       notificaciones-service
+            └─ smtp send                     notificaciones-service  4,8 ms
+```
+
+![Traza del scheduler en Zipkin](docs/img/reto8/zipkin-traza-scheduler.png)
+
+Los logs de los tres servicios se encuentran en Loki con un solo filtro por ese `traceId`:
+`{service=~".+"} |= "4044790dc8c500b4fec40a8f84859aab"`.
+
+**4. Caos: servicio caído.**
+
+| Hora | Evento |
+|---|---|
+| 03:04:01 | `docker compose stop departamentos-service` |
+| 03:04:12 | Prometheus: `up{job="departamentos-service"} = 0` (target `DOWN`); el panel de estado pasa a rojo |
+| 03:05:30 | Grafana: la regla *Servicio caído* pasa de *Pending* a *Firing* (`for: 1m`) |
+| 03:05:46 | Llega el correo `[RHM] FIRING: Servicio caído` a `soporte@rhm.local` |
+| 03:11:54 | `docker compose start departamentos-service` |
+| 03:13:06 | Llega `[RHM] RESOLVED: Servicio caído` |
+
+Durante la caída, `GET /health` del Gateway siguió respondiendo 200 con
+`"departamentos-service":"DOWN"` en `checks`, y los demás servicios siguieron atendiendo.
+
+**5. Caos: latencia artificial.** Se insertó temporalmente en `public/index.php` de
+departamentos-service (dentro del contenedor, sin tocar el repositorio) un `usleep(5_000_000)`, primero
+en el 50 % de las peticiones y luego en el 70 %, y se generó tráfico concurrente:
+
+| Hora | Evento |
+|---|---|
+| 03:13:22 | Latencia inyectada en el 50 % de las peticiones |
+| 03:14:32 | Latencia promedio: departamentos-service 2,78 s, api-gateway 1,22 s; *Alta latencia* en *Pending* |
+| 03:15:35 | El promedio baja a 1,86 s y la alerta vuelve a *Normal*: la condición debe sostenerse 2 min |
+| 03:15:41 | Se sube la inyección al 70 % para sostener la condición |
+| 03:18:04 | departamentos-service 4,36 s → *Alta latencia* en **Firing**; api-gateway sube a 2,26 s y entra en *Pending* (la lentitud se propaga hacia arriba) |
+| 03:18:10 | Llega el correo `[RHM] FIRING: Alta latencia` |
+
+En Zipkin, el span `get /departamentos/{id}` dura 5005 ms mientras su `mysql query` dura 0,1 ms: la
+demora está en el servicio, no en la base de datos.
+
+![Traza lenta de departamentos en Zipkin](docs/img/reto8/zipkin-traza-lenta-departamentos.png)
+
+En la misma ventana, la traza de un `POST /empleados` muestra la llamada de empleados-service a
+`GET /departamentos` cortada a los **2000 ms con error** (`DEPARTMENTS_TIMEOUT_MS`), mientras
+departamentos-service seguía procesando durante 5004 ms: el timeout del cliente visto desde la traza.
+
+Alertas recibidas en el canal (MailHog):
+
+![Correos de alerta en MailHog](docs/img/reto8/mailhog-alertas.png)
+
+Dashboard de Grafana con métricas reales (fila de estado y paneles de tráfico durante las pruebas):
+
+![Dashboard de Grafana](docs/img/reto8/grafana-dashboard.png)
+
+Los 7 servicios en verde y, en *Latencia promedio por servicio*, el pico de departamentos-service
+(máximo 4,46 s) y de empleados-service (2,02 s, el timeout de su llamada a departamentos) durante la
+prueba de latencia.
+
+### ¿Qué servicio del ecosistema tardó más en responder y cómo lo identificaron?
+
+**auth-service, en `POST /auth/login`**: unos 220 ms de promedio (p95 247 ms) frente a menos de 10 ms
+del resto de servicios, en 3 minutos de tráfico normal (987 peticiones, sin caos).
+
+Cómo se identificó, en tres pasos:
+
+1. **Métricas (¿quién?).** El panel *Latencia promedio por servicio* del dashboard (misma consulta en
+   PromQL) ordena los servicios y auth-service queda muy por encima:
+
+   ```promql
+   sum by (job) (rate(http_request_duration_seconds_sum{route!="/health"}[5m]))
+     / sum by (job) (rate(http_request_duration_seconds_count{route!="/health"}[5m]))
+   ```
+
+   | Servicio | Promedio | p95 |
+   |---|---:|---:|
+   | auth-service | 220 ms | 247 ms |
+   | api-gateway | 20 ms | 128 ms |
+   | departamentos-service | 5,6 ms | 9,7 ms |
+   | empleados-service | 3,9 ms | 19 ms |
+   | vacaciones-service | 1,7 ms | 4,8 ms |
+   | notificaciones-service | 1,5 ms | 4,8 ms |
+   | perfiles-service | 0,7 ms | 4,7 ms |
+
+   Agrupando además por `route`, la ruta lenta es una sola: `/auth/login` (220 ms). Las demás rutas de
+   auth son rápidas. El p95 alto del Gateway también es el login: el Gateway solo reenvía, y su
+   latencia es la del servicio de destino.
+
+2. **Traza (¿dónde dentro del servicio?).** En Zipkin, un login dura ~250 ms y su único span hijo,
+   la consulta del usuario a PostgreSQL, dura **1 ms**. Los ~249 ms restantes ocurren dentro del
+   handler sin ninguna llamada a otro servicio ni a la base de datos: es cómputo del propio servicio.
+
+3. **Código (¿por qué?).** Ese cómputo es la verificación de la contraseña con **bcrypt**
+   (`SALT_ROUNDS = 12`, `bcrypt-password.hasher.ts`): bcrypt es lento a propósito para encarecer los
+   ataques de fuerza bruta. Es una lentitud de diseño, no un defecto, y no justifica alarmas: queda
+   lejos del umbral de 2 s. Si el login se volviera cuello de botella, el ajuste está en el costo de
+   bcrypt (11 lo reduce a la mitad) o en escalar auth-service, no en la base de datos.
+
+En la prueba de latencia artificial, la misma secuencia (dashboard → traza → span) llevó al servicio
+culpable en segundos: el Gateway subió a 2,26 s, pero la traza mostró que el tiempo estaba en el span
+de departamentos-service, no en el Gateway.
+
+### Estructura agregada
+
+```text
+rhm-database-infrastructure/observability/
+├── prometheus/prometheus.yml            ← 7 scrape jobs (api-gateway primero)
+├── loki/loki-config.yml                 ← Loki monolítico, retención 7 días
+├── promtail/promtail-config.yml         ← descubrimiento por socket Docker, etiqueta level
+└── grafana/
+    ├── dashboards/rhm-overview.json     ← dashboard (exportado en JSON)
+    └── provisioning/
+        ├── datasources/datasources.yml  ← Prometheus, Loki (→ Zipkin) y Zipkin
+        ├── dashboards/dashboards.yml    ← carga los JSON de dashboards/
+        └── alerting/                    ← reglas, punto de contacto y política
+
+Cada microservicio: métricas, health, tracing y logs en su carpeta de observabilidad
+(src/infrastructure/observability, app/observability, internal/infrastructure/observability,
+app/infrastructure/observability, src/Infrastructure/Observability).
+```
+
+
 ## Persistencia
 
 ```bash
@@ -681,4 +1156,6 @@ docker compose logs -f vacaciones-service
 docker compose logs -f message-broker
 docker compose logs -f sonar-init jenkins     # arranque de la CI
 docker compose up -d --build jenkins          # aplicar cambios de jenkins/casc.yaml o plugins.txt
+docker compose restart grafana                # recargar dashboard/alertas de observability/grafana
+curl -X POST http://localhost:9091/-/reload   # recargar observability/prometheus/prometheus.yml
 ```

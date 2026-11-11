@@ -1,0 +1,11 @@
+# Política de notificación (Reto 8): toda alerta va al correo de soporte, agrupada por regla y
+# servicio, para que una caída de 3 servicios lleguen 3 avisos claros y no 1 mezclado.
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: email-soporte-rhm
+    group_by: ['alertname', 'job']
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 4h

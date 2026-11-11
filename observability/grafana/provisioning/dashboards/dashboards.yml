@@ -1,0 +1,13 @@
+# Proveedor de dashboards (Reto 8): Grafana carga al arrancar los JSON versionados en
+# observability/grafana/dashboards. Editarlos en la interfaz no los cambia en Git: el JSON del
+# repositorio es la fuente de verdad (exportar y reemplazar el archivo para versionar un cambio).
+apiVersion: 1
+
+providers:
+  - name: rhm
+    folder: RHM
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
