@@ -22,7 +22,11 @@
         {"matcher": {"id": "byName", "options": "Estado"}, "properties": [
           {"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "NO DISPONIBLE", "color": "red"}, "1": {"text": "DISPONIBLE", "color": "green"}}}]},
           {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}},
-          {"id": "custom.cellOptions", "value": {"type": "color-background"}}
+          {"id": "custom.cellOptions", "value": {"type": "color-background"}},
+          {"id": "links", "value": [{"title": "Abrir diagnóstico del servicio", "url": "/d/rhm-service-detail/rhm-diagnostico-de-servicio?orgId=1&var-service=${__data.fields.Servicio}&from=${__from}&to=${__to}", "targetBlank": false}]}
+        ]},
+        {"matcher": {"id": "byName", "options": "Servicio"}, "properties": [
+          {"id": "links", "value": [{"title": "Abrir diagnóstico de ${__value.raw}", "url": "/d/rhm-service-detail/rhm-diagnostico-de-servicio?orgId=1&var-service=${__value.raw}&from=${__from}&to=${__to}", "targetBlank": false}]}
         ]}
       ]},
       "options": {"cellHeight": "sm", "showHeader": true, "footer": {"show": false}},

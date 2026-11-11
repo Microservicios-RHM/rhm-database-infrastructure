@@ -32,17 +32,17 @@ scrape_configs:
       - targets: ["http://api-gateway:8080/health"]
         labels: { service: api-gateway }
       - targets: ["http://empleados-service:8080/health"]
-        labels: { service: empleados }
+        labels: { service: empleados-service }
       - targets: ["http://departamentos-service/health"]
-        labels: { service: departamentos }
+        labels: { service: departamentos-service }
       - targets: ["http://auth-service:8080/health"]
-        labels: { service: auth }
+        labels: { service: auth-service }
       - targets: ["http://notificaciones-service:8080/health"]
-        labels: { service: notificaciones }
+        labels: { service: notificaciones-service }
       - targets: ["http://perfiles-service:8080/health"]
-        labels: { service: perfiles }
+        labels: { service: perfiles-service }
       - targets: ["http://vacaciones-service:8080/health"]
-        labels: { service: vacaciones }
+        labels: { service: vacaciones-service }
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
